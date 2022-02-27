@@ -4,7 +4,7 @@ set -e
 set -x
 
 INSTALL_PREFIX='/usr/i686-w64-mingw32'
-PACKAGE_DIR='dosbox_reelmagic'
+PACKAGE_DIR="dosbox_reelmagic_`git describe --abbrev=0 --tags 2>/dev/null || echo 'notag'`"
 
 rm -Rf "$PACKAGE_DIR" "$PACKAGE_DIR.zip"
 mkdir -p "$PACKAGE_DIR"
