@@ -6,6 +6,8 @@ set -x
 INSTALL_PREFIX='/usr/i686-w64-mingw32'
 TOOLCHAIN='i686-w64-mingw32'
 
+export PATH="$INSTALL_PREFIX/bin:$PATH"
+
 #
 # Adding the SDL libraries to MinGW
 #
