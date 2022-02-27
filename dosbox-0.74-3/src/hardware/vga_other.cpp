@@ -28,6 +28,8 @@
 #include "render.h"
 #include "mapper.h"
 
+#include "vga_reelmagic_override.h"
+
 static void write_crtc_index_other(Bitu /*port*/,Bitu val,Bitu /*iolen*/) {
 	vga.other.index=(Bit8u)val;
 }

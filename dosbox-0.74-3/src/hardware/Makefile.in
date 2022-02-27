@@ -119,7 +119,8 @@ am_libhardware_a_OBJECTS = adlib.$(OBJEXT) dma.$(OBJEXT) \
 	vga_seq.$(OBJEXT) vga_xga.$(OBJEXT) vga_s3.$(OBJEXT) \
 	vga_tseng.$(OBJEXT) vga_paradise.$(OBJEXT) cmos.$(OBJEXT) \
 	disney.$(OBJEXT) gus.$(OBJEXT) mpu401.$(OBJEXT) ipx.$(OBJEXT) \
-	ipxserver.$(OBJEXT) dbopl.$(OBJEXT)
+	ipxserver.$(OBJEXT) dbopl.$(OBJEXT) reelmagic_driver.$(OBJEXT) \
+	reelmagic_player.$(OBJEXT) reelmagic_videomixer.$(OBJEXT)
 libhardware_a_OBJECTS = $(am_libhardware_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -335,7 +336,8 @@ libhardware_a_SOURCES = adlib.cpp dma.cpp gameblaster.cpp hardware.cpp iohandler
                         memory.cpp mixer.cpp pcspeaker.cpp pic.cpp sblaster.cpp tandy_sound.cpp timer.cpp \
 			vga.cpp vga_attr.cpp vga_crtc.cpp vga_dac.cpp vga_draw.cpp vga_gfx.cpp vga_other.cpp \
 			vga_memory.cpp vga_misc.cpp vga_seq.cpp vga_xga.cpp vga_s3.cpp vga_tseng.cpp vga_paradise.cpp \
-			cmos.cpp disney.cpp gus.cpp mpu401.cpp ipx.cpp ipxserver.cpp dbopl.cpp
+			cmos.cpp disney.cpp gus.cpp mpu401.cpp ipx.cpp ipxserver.cpp dbopl.cpp \
+			reelmagic_driver.cpp reelmagic_player.cpp reelmagic_videomixer.cpp
 
 all: all-recursive
 
@@ -403,6 +405,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mpu401.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pcspeaker.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pic.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/reelmagic_driver.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/reelmagic_player.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/reelmagic_videomixer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sblaster.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tandy_sound.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/timer.Po@am__quote@

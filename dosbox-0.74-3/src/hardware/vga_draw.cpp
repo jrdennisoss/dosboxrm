@@ -27,6 +27,8 @@
 #include "vga.h"
 #include "pic.h"
 
+#include "vga_reelmagic_override.h"
+
 //#undef C_DEBUG
 //#define C_DEBUG 1
 //#define LOG(X,Y) LOG_MSG

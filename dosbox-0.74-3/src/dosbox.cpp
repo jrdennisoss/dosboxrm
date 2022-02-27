@@ -42,6 +42,7 @@
 #include "mapper.h"
 #include "ints/int10.h"
 #include "render.h"
+#include "reelmagic.h"
 
 Config * control;
 MachineType machine;
@@ -652,6 +653,14 @@ void DOSBOX_Init(void) {
 	
 	Pbool = secprop->Add_bool("disney",Property::Changeable::WhenIdle,true);
 	Pbool->Set_help("Enable Disney Sound Source emulation. (Covox Voice Master and Speech Thing compatible).");
+
+	secprop=control->AddSection_prop("reelmagic",&ReelMagic_Init,false);//ReelMagic Emulator -- where is the right place to put this? probably after mixer...
+	Pbool = secprop->Add_bool("enabled",Property::Changeable::OnlyAtStart,true);
+	Pbool->Set_help("Enable the ReelMagic emulator.");
+	Pbool = secprop->Add_bool("alwaysresident",Property::Changeable::OnlyAtStart,false);
+	Pbool->Set_help("Force the FMPDRV.EXE to always be resident and not unloadable.");
+	Pbool = secprop->Add_bool("vgadup5hack",Property::Changeable::OnlyAtStart,false);
+	Pbool->Set_help("Enable the VGA DUP5 Hack. Duplicate's every VGA 5th line.");
 
 	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
 	secprop->AddInitFunction(&INT10_Init);

@@ -1,5 +1,5 @@
 dnl Init.
-AC_INIT(dosbox,0.74-3)
+AC_INIT(dosbox,0.74-3rm)
 AC_PREREQ(2.50)
 AC_CONFIG_SRCDIR(README)
 
