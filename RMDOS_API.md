@@ -1,7 +1,7 @@
 
 # Overview
 
-The version of the ReelMagic driver that was implemented is 1.11
+This uses version 1.11 of the ReelMagic driver
 
 ## Major Components
 
@@ -12,22 +12,19 @@ The version of the ReelMagic driver that was implemented is 1.11
 
 
 
-
-
-
 # RMDEV.SYS
-When loaded, this DOS device driver file responds to some INT 2F / DOS Multiplex calls. Mainly it's
+When loaded, this DOS device driver file responds to some INT 2F / DOS Multiplex calls. Its main
 purpose is to tell applications where they can find the driver as well as some other things about
 the hardware. It also handles the audio mixer interfaces.
 
 Note: The ReelMagic DOSBox code `reelmagic_driver.cpp` emulates this file's functionality and
-therfore is not required for using the DOSBox ReelMagic emulator. Like many emulated functionalities
+therefore is not required for using the DOSBox ReelMagic emulator. Like many emulated functionalities
 within DOSBox, there is no actual "RMDEV.SYS" file. Its functionality is permanently resident when
 ReelMagic support is enabled.
 
 
 ## Function AX=9800h
-The AX=9800h function has several subfunctions it responds to...
+The AX=9800h function has several subfunctions it responds to:
 
 ### Subfunction BX=0000 - Query Magic Number
 Means for applications to discover if the ReelMagic driver and hardware is installed.
@@ -55,12 +52,12 @@ Note: As "FMPDRV.EXE" is fully emulated, this value is ignored so it does not re
 
 ### Subfunction BX=0004 - Query if MPEG/ReelMagic Audio Channel is Enabled (I think)
 This impacts the enabled/disabled UI state of the MPEG slider in the "DOXMIX.EXE" utility. This
-is either a query to say that we have MPEG audio channel for the mixer, or its replying with an
+is either a query to say that we have MPEG audio channel for the mixer, or it's replying with an
 IRQ or location or something... AX=1 for yes, AX = 0 for no
 
 ### Subfunction BX=0007 - Query if PCM and CD Audio Channels are Enabled (I think)
 This impacts the enabled/disabled UI state of the PCM and CD Audio sliders in the "DOXMIX.EXE"
-utility. This is either a query to say that we have theses channels for the mixer, or its
+utility. This is either a query to say that we have these channels for the mixer, or it's
 replying with an IRQ or location or something... AX=1 for yes, AX = 0 for no
 
 ### Subfunction BX=0010 - Query Main Audio Left Channel Volume
@@ -134,7 +131,7 @@ New volume level is in DX. Value will be between 0 (off) and 100 (max).
 ## Function AX=9803h - Query Path to Driver EXE
 Means for applications to query the path where they can find the driver ("FMPDRV.EXE") executable. The
 path must be fully-qualified and end with a '\' character. For example, if "FMPDRV.EXE" is installed in
-"Z:\FMPDRV.EXE" then this function must respond with "Z:\".
+"Z:\FMPDRV.EXE", then this function must respond with "Z:\".
 
 The output is to be written as a null-terminated string to caller-provided memory at address DX:BX,
 and set AX=0 on success.
@@ -163,7 +160,7 @@ returning AX=0
 # FMPDRV.EXE
 
 This is the main driver for the ReelMagic MPEG video decoders. When invoked, it installs a software
-interrupt handler as a TSR which is respondible for handling all requests to the MPEG decoders. If invoked
+interrupt handler as a TSR which is responsible for handling all requests to the MPEG decoders. If invoked
 with the "/u" command-line option, it unloads the TSR and the interrupt handler it previously installed.
 
 This file must always be named "FMPDRV.EXE" but can exist in any path. The path to this EXE file is
@@ -176,14 +173,14 @@ provided when ReelMagic support is enabled.
 
 ## Loading
 
-The Return to Zork game provides an "FMPLOAD.COM" executable which is responsible for finding and
+The Return to Zork game provides an "FMPLOAD.COM" executable, which is responsible for finding and
 executing "FMPDRV.EXE" before the game start, and unloading it after the game ends. Since the "FMPDRV.EXE"
 string is hardcoded, a constraint is created to use this exact filename for our driver emulator. The
 "FMPLOAD.COM" executable will call the correct "Z:\FMPDRV.EXE" file as it makes a call to the "RMDEV.SYS"
 Function AX=9803h - Query Path to Driver EXE.
 
 
-Alternatively, the "Z:\FMPDRV.EXE" file can be invoked in the DOSBox's `autoexec` config section as
+Alternatively, the "Z:\FMPDRV.EXE" file can be invoked in DOSBox's `autoexec` config section as
 subsequent calls to either the emulated "FMPDRV.EXE" or a real "FMPDRV.EXE" will be a no-op because the
 drivers perform a check to make sure they are not already loaded.
 
@@ -210,7 +207,7 @@ for (int_num = 0x80; int_num < 0x100; ++int_num) {
   const char * str = ivt_callback_ptr; //yup you read that correctly,
                                        //we are casting a function pointer to a string...
   size_t strsize = (unsigned char)&str[2];
-  if (strcmp(&str[3], "FMPDriver", strsize) == 0) {
+  if (strncmp(&str[3], "FMPDriver", strsize) == 0) {
     return int_num; //we have found the FMPDriver at INT int_num
 }
 ```
@@ -219,7 +216,7 @@ for (int_num = 0x80; int_num < 0x100; ++int_num) {
 
 This is the main API call entry point to the driver from user applications such as SPLAYER.EXE or Return
 to Zork, which is used to control the ReelMagic MPEG video decoders. This is normally found at INT 80h,
-however it appears that it can also be placed in a higher IVT slot if 80h is already occupied (!=0) by
+but it appears that it can also be placed in a higher IVT slot if 80h is already occupied (!=0) by
 something else. See above section "Detection of FMPDRV.EXE From User Applications" for the logic used in
 user applications to determine which INT number this API is found on. For this project, I usually refer
 to this API as the `driver_call()` function.
@@ -249,25 +246,25 @@ to a "hardware" MPEG video player/decoder resource.
 Opens a media handle (MPEG decoder / player) for the given DOS filepath, and returns the new media handle.
 If the file does not exist, then a zero media handle is returned. The filepath is passed in via a pointer
 to a null-terminated string; `param2` is the segment, and `param1` is the offset. If subfunc has the 1000h
-flag set, then the filepath is NOT treated as null-terminated string, but rather the first byte being the
-string length.
+flag set, then the filepath is NOT treated as null-terminated string, rather, the first byte will specify 
+the string length.
 
 I have seen three different subfunction values passed into this function. Return to Zork always seems to
-use 0002h,  "SPLAYER.EXE" uses 0001h, and "FMPTEST.EXE" uses 1001h. I'm not sure why the difference between,
-the 1 and 2, but I currently accept anything for the subfunction parameter and just log a warning if I get
-something that's not expected. One theory is that the 0002h tells the open function to parse any suffixed
-arguments (e.g. "/l") on the filepath and the 0001h tells the open function that the filepath is to be
-opened exactly as-is, but this is just a guess.
+use 0002h, "SPLAYER.EXE" uses 0001h, and "FMPTEST.EXE" uses 1001h. I'm not sure why there is a difference
+between the 1 and 2, but I currently accept anything for the subfunction parameter and just log a warning
+if I get something that's not expected. One theory is that the 0002h tells the open function to parse any 
+suffixed arguments (e.g. "/l") on the filepath and the 0001h tells the open function that the filepath is
+to be opened exactly as-is, but this is just a guess.
 
 As mentioned above, the filepath string could have a "suffix" appended to it. For some assets, the Return
 to Zork game appends a "/l" (that's a lower-case "L", not the number one) to the filepath string. This is
 only done on assets that are intended to loop such as scene backgrounds. The ReelMagic emulator implements
-this behavior and put the new opened player into a "loop mode" when this flag set. In "loop mode" the
+this behavior and puts the new opened player into a "loop mode" when this flag set. In "loop mode" the
 video will loop/play forever until it is destroyed.
 
 ### Command/Function 02h - Close Media Handle
 Closes the given media handle and frees all resources associated with it. Always returns zero, but as far
-as I can tell, noone checks the return value.
+as I can tell, no one checks the return value.
 
 ### Command/Function 03h - Control/Play Media Handle
 This is either "control" or "play" media handle, I'm not sure which. I have only observed the following
@@ -275,17 +272,17 @@ sub-functions.
 
 #### Subfunction 0001h - Start Playing
 This tells the MPEG decoder to start playing the specified media handle. This always returns zero, but as
-far as I can tell, noone checks the return value.
+far as I can tell, nothing checks the return value.
 
 #### Subfunction 0004h - Start Playing in Loop
 This tells the MPEG decoder to start playing the specified media handle. This will also put the player
 into a "loop mode" before starting. See above "Command/Function 01h - Open Media Handle" for more
-information on loop mode. This always returns zero, but as far as I can tell, noone checks the return value.
+information on loop mode. This always returns zero, but as far as I can tell, nothing checks the return value.
 
 
 ### Command/Function 04h - Unknown - Possibly Stop Media Handle
 I'm not quite sure what this is. I see Return to Zork call this on a specific media handle usually before
-it closes the handle. Currently returning 0;
+it closes the handle. Currently returns 0;
 
 ### Command/Function 09h - Set Parameter
 I'm pretty confident this is a "set parameter" function. For most of these I am just ignoring them as I do
@@ -345,7 +342,7 @@ get screwed up real good real fast...
 
 #### Subfunction 0108h - Query Something About Resource Availability ???
 Not quite sure about this one, but "FMPTEST.EXE" wants a value of DX=0 and AX >=32h. If I don't give it
-what it wants, then the program gives me a "Not enough memort" error. This is only seems to be called
+what it wants, then the program gives me a "Not enough memory" error. This is only seems to be called
 with a zero (global) media handle.
 
 
@@ -358,11 +355,11 @@ contain at least one MPEG-1 decodable picture encapsulated in either an MPEG-PS 
 #### Subfunction 0204h - Query Play State
 This is some kind play state query. Both "SPLAYER.EXE" and Return to Zork "busy poll" this call after
 sending a play command (03h) to us. The "SPLAYER.EXE" tool spins while (return value & 0x03) == 0 and
-Return to Zork spins on this while the return value == 0x14. Therfore, while the player associated with
-the given media handle is actively playing a file, this will return 0x14, and 0x01 when playing of said
+Return to Zork spins on this while the return value == 0x14. Therefore, while the player associated with
+the given media handle is actively playing a file, this will return 0x14, and 0x01 when playback of said
 file has ended.
 
-Nots: This subfunction will forever return 0x14 when invoked on a media handle which is in "loop mode"
+Notes: This subfunction will forever return 0x14 when invoked on a media handle that is in "loop mode"
 
 #### Subfunction 0208h - Unknown but Critically Important
 I'm not exactly sure what this is, however, if we don't return a zero value, things get screwed up bad.
@@ -375,14 +372,14 @@ there do not seem to by any unwarranted DOS/INT21 file close calls.
 
 Looking further into the Return to Zork code, the routine at 15B2:0131 is
 what seems to screw things up. It is responsible for calling this routine,
-then checking the return value for non-zero. If the return value is non-zero,
-it does a bunch of stuff that puts us in a bad state, as well as it starts
+then checks the return value for nonzero. If the return value is nonzero,
+it does a bunch of stuff that puts us in a bad state, and starts
 calling function 09h with the same subfunction 0208h. For now, I think it's
 pretty safe to say that returning 00000000 from this subfunction is the right
 thing to do.
 
 #### Subfunction 0403h - Likely Get Decoded Picture Dimensions
-This is likely a call to get the decoded picture dimensions. The picture height is height in the
+This is likely a call to get the decoded picture dimensions. The picture height is in the
 upper 16-bits (DX) and the picture width is returned in the lower 16-bits.
 
 If it's not a getter for the decoded picture dimensions, then it's probably a getter for current
@@ -391,7 +388,7 @@ display size. (which would need to default to decoded picture dimensions)
 
 ### Command/Function 0Bh - Register User Callback Function
 This registers a callback function for the API user. It would appear that the registered callback function
-is to be called on certain driver/device events. See the "The User Callback Function" sub-section below
+is to be called on certain driver/device events. See the "The User Callback Function" subsection below
 for more information.
 
 The media handle and subfunction parameters are ignored, `param2` is the segment and `param1` is the
@@ -399,12 +396,12 @@ offset of the callback function pointer. Zero can be given to both `param2` and 
 Zero is always returned; it does not appear the return value is checked.
 
 ### Command/Function 0Dh - Unload FMPDRV.EXE
-This is called by "FMPDRV.EXE" when the user passes a "/u" onto the command-line. Invoking this function
+This is called by "FMPDRV.EXE" when the user passes a "/u" onto the command line. Invoking this function
 cleans up any open media handles and removes the driver's INT handler. The "RMDEV.SYS" INT 2F functions
 still remain resident and functional. Zero is always returned.
 
 ### Command/Function 0Eh - Reset
-This is the very first call that "SPLAYER.EXE" and Return to Zork do at application startup. Likey this is
+This is the very first call that "SPLAYER.EXE" and Return to Zork do at application startup. Likely, this is
 a reset function as the return value does not appear to be checked.
 
 
@@ -414,7 +411,7 @@ a reset function as the return value does not appear to be checked.
 ## The User Callback "driver_callback()" Function
 A "user callback function" can be registered via the `driver_call(0Bh, ...)` API. It looks like this
 function is intended to be called back from the driver to the user application on certain events. The
-prototype for this `driver_callback()` function appears to be:
+prototype for the `driver_callback()` function appears to be:
 ```
 void driver_callback(uint16_t command, uint8_t media_handle, uint8_t unknown1, uint32_t unknown2);
 ```
@@ -429,7 +426,7 @@ Ultimately, all these callbacks should be understood and implemented to ensure m
 ReelMagic emulated compatibility.
 
 Side note: Return to Zork does a -1 on the `command` variable before comparing it. This leads me to
-           beleive that zero may not be a valid value. 
+           believe that zero may not be a valid value. 
 
 ### Command/Function 01h - Unknown
 No idea what this does. I am not (yet) calling it.
@@ -447,7 +444,7 @@ No idea what this does. I am not (yet) calling it.
 This appears to be a callback that is expected to happen once the driver has either closed or stopped
 the media playing. I'm leaning towards this being an "I'm about to close the media handle" callback, but
 at this point I am not 100% sure. However by invoking this callback when we are called to close a media
-handle, this fixes "The RTZ Click-to-Skip Bug" mentioned below...
+handle, this fixes "The RTZ Click-to-Skip Bug" mentioned below.
 
 ### Command/Function 09h - Unknown
 No idea what this does. I am not (yet) calling it.
@@ -460,17 +457,17 @@ No idea what this does. I am not (yet) calling it.
 
 
 
-# The Physical H/W
+# Physical Hardware
 
 For now, no port I/O calls have been implemented, but I left commented out some of the remaining port I/O
-handler code I was tinkering with when debugging. For now, taking a similiar approach to what DOSBox did
-with MSCDEX; implementation of an emulated driver resides in DOSBox.
+handler code I was tinkering with when debugging. For now, I am taking a similiar approach to what DOSBox did
+with MSCDEX, and the implementation of an emulated driver resides in DOSBox.
 
 
 # Known Issues and Limitations
 
 As this API was generated from what I could get from the DOSBox debugger and Ghidra, there are
-gonna be bugs and issues primarily because this is based on how I observed things interacting,
+going to be bugs and issues primarily because this is based on how I observed things interacting,
 and not on a known spec.
 
 ## The RTZ Click-to-Skip Bug
@@ -478,13 +475,13 @@ and not on a known spec.
 This issue is big enough to note because this was the driving force for me to implement part of the
 "user callback" functionality.
 
-During the intro scene, if the mouse is clicked to skip the video, an issue is encountered where
-the media handle #1 is closed twice. This would not be an issue, however, the first time the media
-handle #1 is closed, the game still holds on to the handle #1 thinking its still open. Then, before
-calling the second close of media handle #1, the next media handle for the next video  is opened,
-which is given media handle #1 because the first one was closed. The game then closes media handle #1
-right after opening the second video, which puts things into a never ending open-close loop for
-all video assets in the game, resulting in black screens for the whole game.
+During the intro scene, if the mouse is clicked to skip the video, media handle #1 is closed mutliple times. 
+Closing multiple times would not normally be an issue, but the first time media handle #1 is closed, the game 
+still holds onto handle #1 thinking it's still open. Before calling the second close of media 
+handle #1, the next video is opened, which is immediately given media handle #1 because the first 
+one was closed. The game then closes this media handle right after opening the second video, which 
+puts things into a never ending open-close loop for all video assets in the game, resulting in black
+screens for the whole game.
 
 This is a log of what happens:
 ```
@@ -500,13 +497,12 @@ REELMAGIC:FMPDRV.EXE pre-exception driver_call(02h,01h,0h,0h,0h)
 ```
 
 This could be worked around by "looping" the next free media handle instead of always starting
-at index zero. This would work because by the time things were wrapped back to zero, the game
-would have already had done the double-closed that handle.
+at index zero. This would work because by the time things wrap back to zero, the game
+would have already done the double-close of that handle.
 
 The "right" way to do this seems to be firing the "user callback function" that was registered on
 game start to notify the game that the handle is no longer playing and/or open. From what I can
-tell, there is only one user callback command/sub-function which could be used to handle this
-which is #5.
+tell, there is only one user callback command/sub-function #5, which could be used to handle this.
 
 Roughly how the game handles #5:
 ```
@@ -517,8 +513,8 @@ driver_callback(command=0005h, media_handle=XXh, unknown1=00h, unknown2=00000000
   . if (media_handle == DAT_1afe_18ec) DAT_1afe_18ec = 0;
 ```
 
-The last part where `DAT_1afe_18ec` is zero'd releases the game's copy of the handle number and
-therfore does not try to keep closing it after that is done.
+The last part where `DAT_1afe_18ec` is zeroed releases the game's copy of the handle number and
+therefore, does not try to keep closing it after that is done.
 
 
 
