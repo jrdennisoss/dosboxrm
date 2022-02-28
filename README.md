@@ -80,7 +80,7 @@ The following existing DOSBox source code files have been modified for ReelMagic
 * `src/dosbox.cpp`                        -- ReelMagic init hook-in and config section.
 * `src/hardware/Makefile.am`              -- Declared new ReelMagic *.cpp source code files
 
-The following headers redirect all VGA output from DOSBox RENDER to ReelMagic:
+The following files have been modified to include the ReelMagic override header to redirect all VGA output from DOSBox RENDER to ReelMagic:
 
 * `src/hardware/vga_dac.cpp`              
 * `src/hardware/vga_draw.cpp`             
