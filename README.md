@@ -10,9 +10,9 @@ ReelMagic version of Return to Zork.
 
 The following people have made this project a reality:
 
-* Jon Dennis <jrdennisoss@gmail.com>
-* Chris Guthrie <csguthrieoss@gmail.com>
-* Joseph Whittaker <j.whittaker.us@ieee.org>
+* Jon Dennis <jrdennisoss_at_gmail.com>
+* Chris Guthrie <csguthrieoss_at_gmail.com>
+* Joseph Whittaker <j.whittaker.us_at_ieee.org>
 
 It is also worth mentioning Dominic Szablewski's (https://phoboslab.org) awesome
 MPEG decoder library `PL_MPEG` was used for this, and of course this project is
