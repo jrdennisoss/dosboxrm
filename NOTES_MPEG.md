@@ -10,18 +10,18 @@ For whatever reason, most ReelMagic game MPEG video asset files have a reserved
 `picture_rate` code (0xC and 0xD seen so far) in the MPEG sequence header...
 according to ISO/IEC 11172-2, anything above 0x8 is a "reserved" value. Looking
 at the PTS values in the Return to Zork intro video "FINTRO01.MPG", the actual
-framerate is roughly 30 fps, therfore the expected value for this asset would be
+framerate is roughly 30 fps. Therefore, the expected value for this asset would be
 0x5, not 0xD. However, just overwriting/forcing this value to 0x5 and playing the
 video using stock PLMPEG, VLC, or another media player yields a terribly corrupt
 and completely trashed video. In-depth analysis of the video shows decompression
-of bitstream data fails/misalignes on only P and B picture slices that contain
-macroblocks with motion vectors. since the `motion*_r` values are variable
-length bit fields dictated by the picture `f_code` sizes, if the `f_code` is
+of bitstream data fails/misaligns on only P and B picture slices that contain
+macroblocks with motion vectors. Since the `motion*_r` values are variable-length 
+bit fields dictated by the picture `f_code` sizes, if the `f_code` is
 not the exact value used at the time of encoding/compression, decompression
 during motion vector VLC table lookup will completely screw up the state of
 the decoder as garbage data is being decompressed.
 
-I discovered that hardcoding an `f_code` of some value (thus `motion*_r` bitfield
+I discovered that hardcoding an `f_code` of some value (`motion*_r` bitfield
 sizes inherintly now hardcoded to some value -1) for both forward and backward
 corrects the motion vector VLC table/decompression problems.
 
@@ -36,31 +36,31 @@ either 3 or 8 seem to contain a truthful `f_code` value.
 Facts:
   * Only have currently seen this on muxed (MPEG-1 PS) files.
   * Magical assets can be identified by having a `picture_rate` code of 0xC or 0xD
-  * Normal sssets having a standard-compliant `picture_rate` code such as the "SIGMA.MPG" file decode just fine with any standard MPEG-1 compliant decoder/player.
+  * Normal assets having a standards-compliant `picture_rate` code, such as the "SIGMA.MPG" file, decode just fine with any standard MPEG-1 compliant decoder/player.
   * A static `f_code` of 4 seems to work for most of the Return to Zork magical MPEG asset files.
     * Exceptions: `FENDING0.MPG` wants 3 and `FFBTRD01.MPG` wants 1
-  * A static `f_code` of 2 seems to work for most of the LOTR magical MPEG asset files.
+  * A static `f_code` of 2 seems to work for most of the Lord of the Rings magical MPEG asset files.
 
 
 ## Open Questions
 
-* Can the `f_code` update per picture like with standard MPEG-1 video or is it limited to one static forward/backward static value pair per MPEG file/sequence?
+* Can the `f_code` update per picture as with standard MPEG-1 video, or is it limited to one static forward/backward static value pair per MPEG file/sequence?
 * What is the exact relationship between temporal sequence number and `f_code`?
 
 ## Current Emulator Workaround
 
-As a truthful `f_code` value appears to be in all P and B pictures with a temporal
-sequence number of either 3 or 8, I am currently doing a hack where I seek to find
-the first P or B picture header matching this criteria, and and applying its `f_code`
-value statically to all forward and backward motion vector `f_code` values for
+A truthful `f_code` value appears to be in all P and B pictures with a temporal
+sequence number of either 3 or 8, so I am currently seeking to the first P or B 
+picture header matching these criteria, and applying a static `f_code`
+value to all forward and backward motion vector `f_code` values for
 magical MPEG files.
 
-Eventually I think this needs to be handled on a per-picture basis.
+Eventually, I think this needs to be handled on a per-picture basis.
 
 
 ## Analyzing and Inspecting These Files
 
-There are a handful of programs I have included in the `tools/` directory which can
+There are a handful of programs I have included in the `tools/` directory that can
 help with analyzing and debugging these files. Just hit `make` in that directory to
 build everything.
 
@@ -78,13 +78,13 @@ For example:
   Normal MPEG-1 PS asset detected. Frame rate code=0x4
 ```
 
-Note: The `is_magical_asset` tool will only exit with a code of 0 if the file is a detected magical asset.
+Note: The `is_magical_asset` tool will only exit with a code of 0 if it detects that the file is a magical asset.
 
 
 
 ### Conversion
 
-To retrieve a static `f_code` value which can be used to play a magical asset, the
+To retrieve a static `f_code` value to play a magical asset, the
 `find_magical_f_code` tool can be used.
 For example:
 ```
