@@ -3,7 +3,7 @@
 # Overview
 
 I started this fork of DOSBox in order to run ReelMagic games. It would appear
-that no one else has done this so I took this on as I really wanted to play the
+that no one else has done this, so I took this on as I really wanted to play the
 ReelMagic version of Return to Zork.
 
 ## Contributors
@@ -15,13 +15,13 @@ The following people have made this project a reality:
 * Joseph Whittaker <j.whittaker.us@ieee.org>
 
 It is also worth mentioning Dominic Szablewski's (https://phoboslab.org) awesome
-MPEG decoder library `PL_MPEG` was used for this and of course this project is
+MPEG decoder library `PL_MPEG` was used for this, and of course this project is
 built on top of work the DOSBox Team created.
 
 
 ## Current Known Issues and Limitations
 
-* Really only tested working for Return to Zork (more comtability to come)
+* Really only tested working for Return to Zork (more compatibility to come)
 * MPEG video decode is only about 95% complete. There are a few glitches here and there.
 * Need to revisit architecture and approach for mixing VGA and MPEG.
 
@@ -38,15 +38,13 @@ under the `Changes to DOSBox` section below for more information on this.
 All that has been discovered about how the ReelMagic driver works and interacts
 with things is currently documented in the `RMDOS_API.md` file.
 
-## ReelMagic Properitary MPEG Format
+## ReelMagic Proprietary MPEG Format
 
 Most ReelMagic MPEG file assets have been encoded in a non-standard way which
 prevents them from playing in a standard MPEG media player such as VLC. In
-order to get things properly working in DOSBox, I had to make a few hacks
+order to get things properly working in DOSBox, I had to make a few changes
 to the MPEG decoder. More information on this can be found in the
 `NOTES_MPEG.md` file.
-
-
 
 
 # Changes to DOSBox
@@ -62,7 +60,7 @@ The parameters are:
 
 * `enabled`        -- Enables/disables the ReelMagic emulator. By default this is `true`
 * `alwaysresident` -- This forces `FMPDRV.EXE` to always be loaded.  By default this is `false`
-* `vgadup5hack`    -- Hack to duplicate every 5th VGA line to help give output a 4:3 ratio. By default this is `false`
+* `vgadup5hack`    -- Duplicate every 5th VGA line to help give output a 4:3 ratio. By default this is `false`
 
 
 For example:
@@ -75,20 +73,23 @@ vgadup5hack=false
 
 ## Modified Files
 
-The following existing DOSBox source-code files have been modified for ReelMagic emulation functionality:
+The following existing DOSBox source code files have been modified for ReelMagic emulation functionality:
 
 * `include/logging.h`                     -- Added `REELMAGIC` logging type + quick fix for variable length logging args
 * `src/debug/debug_gui.cpp`               -- Added `REELMAGIC` logging type.
 * `src/dosbox.cpp`                        -- ReelMagic init hook-in and config section.
-* `src/hardware/Makefile.am`              -- Declared  new ReelMagic *.cpp source code files
-* `src/hardware/vga_dac.cpp`              -- Include the ReelMagic override header to redirect all VGA output from DOSBox RENDER to ReelMagic
-* `src/hardware/vga_draw.cpp`             -- Include the ReelMagic override header to redirect all VGA output from DOSBox RENDER to ReelMagic
-* `src/hardware/vga_other.cpp`            -- Include the ReelMagic override header to redirect all VGA output from DOSBox RENDER to ReelMagic
+* `src/hardware/Makefile.am`              -- Declared new ReelMagic *.cpp source code files
+
+The following headers redirect all VGA output from DOSBox RENDER to ReelMagic:
+
+* `src/hardware/vga_dac.cpp`              
+* `src/hardware/vga_draw.cpp`             
+* `src/hardware/vga_other.cpp`            
 
 
 ## New Files
 
-The following new DOSBox source-code files have been added for ReelMagic emulation functionality:
+The following new DOSBox source code files have been added for ReelMagic emulation functionality:
 
 * `include/reelmagic.h`                   -- Header file for all ReelMagic stuff
 * `include/vga_reelmagic_override.h`      -- Header file used to redirect all VGA output from DOSBox RENDER to ReelMagic
@@ -100,7 +101,7 @@ The following new DOSBox source-code files have been added for ReelMagic emulati
 
 # ReelMagic Emulator Architecture
 
-ReelMagic emulation software components are "wired-up" as such:
+ReelMagic emulation software components are wired up as such:
 ```
                              |-----------------|                                    |---------------|
                              |     PL_MPEG     |                                    |   Existing    |
@@ -157,9 +158,9 @@ make
 
 # Online Resources
 
-Here is some useful online resources.
+Here are some useful online resources:
 
-## ReelMagic Stuff
+## Information about ReelMagic
 
 Here is a handful of links that helped me get started on the ReelMagic side of things:
 
