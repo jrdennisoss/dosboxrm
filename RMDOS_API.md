@@ -280,9 +280,10 @@ into a "loop mode" before starting. See above "Command/Function 01h - Open Media
 information on loop mode. This always returns zero, but as far as I can tell, nothing checks the return value.
 
 
-### Command/Function 04h - Unknown - Possibly Stop Media Handle
-I'm not quite sure what this is. I see Return to Zork call this on a specific media handle usually before
-it closes the handle. Currently returns 0;
+### Command/Function 04h - Probably Stop Media Handle
+This is likely a command to tell the player to stop or pause a video. I see Return to Zork call this on a
+specific media handle usually before it closes the handle. Also, LOTR calls down on this when the user hits
+the ESC key. Currently returns 0.
 
 ### Command/Function 09h - Set Parameter
 I'm pretty confident this is a "set parameter" function. For most of these I am just ignoring them as I do

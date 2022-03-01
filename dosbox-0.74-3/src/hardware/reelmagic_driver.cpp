@@ -358,14 +358,18 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0;
 
   //
-  // Unknown - Possibly Stop Media Handle
+  // Probably Stop Media Handle
   //
   case 0x04:
     //this always seems to be called with a valid media handle from return to zork right before it closes
     //a media handle, hence why I am assuming this is some kind of a stop command. for now, doing nothing
     //as closing the media handle is all thats really needed to clean things up.
+    //
+    //this is also called by LOTR when the user hits ESC to skip a scene
+    //currently implementing as stop...
     player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
-    return 0; //ignoring this for now... returning zero, nobody seems to actually check this anyways...
+    player->Stop();
+    return 0; //returning zero, nobody seems to actually check this anyways...
 
   //
   // Set Parameter (I think)
