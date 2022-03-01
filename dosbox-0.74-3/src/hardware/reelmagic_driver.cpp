@@ -60,7 +60,7 @@ static bool   _unloadAllowed             = true;
 
 
 //enable full API logging only when heavy debugging is on...
-#if 0
+#if C_HEAVY_DEBUG
 #define APILOG LOG
 #else
 static inline void APILOG_DONOTHING_FUNC(...) {}
