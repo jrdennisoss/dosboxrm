@@ -319,13 +319,14 @@ template <typename T> static inline void RMR_DrawLine_VGADup5VerticalMPEGSameSiz
 //          should we perheps re-think this; possibly using a
 //          lookup table computed at mode change time?
 //
-static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio   = 0;
-static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio  = 0;
+static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio     = 0;
+static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio    = 0;
+static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5LineCounter = 0;
 static void Initialize_RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_Dimensions() {
   _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio   = _mpegUnderlayWidth << 12;
-  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio  /= _vgaWidth;
+  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio  /= _renderWidth;
   _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio  = _mpegUnderlayHeight << 12;
-  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio /= _vgaHeight;
+  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio /= _renderHeight;
 }
 template <typename T> static inline void RMR_DrawLine_VSO_GeneralResizeMPEGToVGA(const T *src) {
   const Bitu lineWidth          = _vgaWidth;
@@ -337,6 +338,23 @@ template <typename T> static inline void RMR_DrawLine_VSO_GeneralResizeMPEGToVGA
       ((++_currentRenderLineNumber * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio) >> 12)];
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 } CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VSO_GeneralResizeMPEGToVGA)
+
+template <typename T> static inline void RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5(const T *src) {
+  const Bitu lineWidth          = _vgaWidth;
+  RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
+  for (Bitu i = 0; i < lineWidth; ++i)
+    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[(i * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio) >> 12]);
+  _mpegUnderlayBufferPtr =
+    &_mpegUnderlayBuffer[_mpegUnderlayWidth *
+      ((++_currentRenderLineNumber * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio) >> 12)];
+  RENDER_DrawLine(_finalMixedRenderLineBuffer);
+
+  if (++_RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5LineCounter >= 5) {
+    _RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5LineCounter = 0;
+    RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5(src);
+    _RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5LineCounter = 0;
+  }
+} CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5)
 
 
 
@@ -423,7 +441,9 @@ static void SetupVideoMixer(const bool updateRenderMode) {
   else {
     if (_vgaDup5Enabled) {
       if ((_renderWidth != _mpegUnderlayWidth) || (_renderHeight != _mpegUnderlayHeight)) {
-        ReelMagic_RENDER_DrawLine = &RMR_DrawLine_MixerError;
+        modeStr = "Generic Unoptimized MPEG Resize to DUP5 VGA Pictures";
+        Initialize_RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_Dimensions();
+        ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5, _vgaBitsPerPixel);
       }
       else {
         modeStr = "Matching Sized MPEG to DUP5 VGA Pictures";
