@@ -26,16 +26,16 @@ ReelMagic support is enabled.
 ## Function AX=9800h
 The AX=9800h function has several subfunctions it responds to:
 
-### Subfunction BX=0000 - Query Magic Number
+### Subfunction BX=0000h - Query Magic Number
 Means for applications to discover if the ReelMagic driver and hardware is installed.
 Replies with "RM" string by setting AX=524Dh
 
-### Subfunction BX=0001 - Query Driver Version
+### Subfunction BX=0001h - Query Driver Version
 Means for applications to query the installed ReelMagic driver version.
 Replies with AH=major and AL=minor.
 Since version 1.11 is the target here, I reply with AH=01h AL=0Bh
 
-### Subfunction BX=0002 - Query I/O Base Address
+### Subfunction BX=0002h - Query I/O Base Address
 Means for applications to query which I/O base address the ReelMagic card is at. From my limited research,
 the port I/O size is 4 bytes. Currently replying with a totally incorrect value of AX=9800h. This way if
 anything reads/writes to the port, the DOSBox debugger will be verbose about it. The default stock config
@@ -44,86 +44,89 @@ of a ReelMagic card sits at port 0x260 from what I can tell.
 Note: As "FMPDRV.EXE" is fully emulated, this value is ignored so it does not really matter
       what it replies with.
 
-### Subfunction BX=0003 - Probably Query IRQ 
+### Subfunction BX=0003h - Probably Query IRQ 
 Not 100% sure, but I think this is the IRQ number of the card. Currently replying with AX=11.
 
 Note: As "FMPDRV.EXE" is fully emulated, this value is ignored so it does not really matter
       what it replies with.
 
-### Subfunction BX=0004 - Query if MPEG/ReelMagic Audio Channel is Enabled (I think)
+### Subfunction BX=0004h - Query if MPEG/ReelMagic Audio Channel is Enabled (I think)
 This impacts the enabled/disabled UI state of the MPEG slider in the "DOXMIX.EXE" utility. This
 is either a query to say that we have MPEG audio channel for the mixer, or it's replying with an
 IRQ or location or something... AX=1 for yes, AX = 0 for no
 
-### Subfunction BX=0007 - Query if PCM and CD Audio Channels are Enabled (I think)
+### Subfunction BX=0007h - Query if PCM and CD Audio Channels are Enabled (I think)
 This impacts the enabled/disabled UI state of the PCM and CD Audio sliders in the "DOXMIX.EXE"
 utility. This is either a query to say that we have these channels for the mixer, or it's
 replying with an IRQ or location or something... AX=1 for yes, AX = 0 for no
 
-### Subfunction BX=0010 - Query Main Audio Left Channel Volume
+### Subfunction BX=0010h - Query Main Audio Left Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0011 - Query Main Audio Right Channel Volume
+### Subfunction BX=0011h - Query Main Audio Right Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0012 - Query MPEG Audio Left Channel Volume
+### Subfunction BX=0012h - Query MPEG Audio Left Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0013 - Query MPEG Audio Right Channel Volume
+### Subfunction BX=0013h - Query MPEG Audio Right Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0014 - Query SYNTH Audio Left Channel Volume
+### Subfunction BX=0014h - Query SYNTH Audio Left Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0015 - Query SYNTH Audio Right Channel Volume
+### Subfunction BX=0015h - Query SYNTH Audio Right Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0016 - Query PCM Audio Left Channel Volume
+### Subfunction BX=0016h - Query PCM Audio Left Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=0017 - Query PCM Audio Right Channel Volume
+### Subfunction BX=0017h - Query PCM Audio Right Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=001C - Query PCM Audio Left Channel Volume
+### Subfunction BX=001Ch - Query PCM Audio Left Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
-### Subfunction BX=001D - Query PCM Audio Right Channel Volume
+### Subfunction BX=001Dh - Query PCM Audio Right Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
+### Subfunction BX=001Eh - Unknown
+Called from Lord of the Rings. Currently known what this does and not modifying AX
+register on return! (meaning it stays at 9800)
 
 
 ## Function AX=9801h
 The AX=9801h function has several subfunctions it responds to... As far as I can tell,
 these are just setters for the mixer.
 
-### Subfunction BX=0010 - Set Main Audio Left Channel Volume
+### Subfunction BX=0010h - Set Main Audio Left Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0011 - Set Main Audio Right Channel Volume
+### Subfunction BX=0011h - Set Main Audio Right Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0012 - Set MPEG Audio Left Channel Volume
+### Subfunction BX=0012h - Set MPEG Audio Left Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0013 - Set MPEG Audio Right Channel Volume
+### Subfunction BX=0013h - Set MPEG Audio Right Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0014 - Set SYNTH Audio Left Channel Volume
+### Subfunction BX=0014h - Set SYNTH Audio Left Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0015 - Set SYNTH Audio Right Channel Volume
+### Subfunction BX=0015h - Set SYNTH Audio Right Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0016 - Set PCM Audio Left Channel Volume
+### Subfunction BX=0016h - Set PCM Audio Left Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=0017 - Set PCM Audio Right Channel Volume
+### Subfunction BX=0017h - Set PCM Audio Right Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=001C - Set PCM Audio Left Channel Volume
+### Subfunction BX=001Ch - Set PCM Audio Left Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
-### Subfunction BX=001D - Set PCM Audio Right Channel Volume
+### Subfunction BX=001Dh - Set PCM Audio Right Channel Volume
 New volume level is in DX. Value will be between 0 (off) and 100 (max).
 
 
@@ -142,7 +145,7 @@ I'm not quite sure what this does. It is possibly a call to reset the card, but 
 do NOT return with an AX=0 from this call, then the Return to Zork game spams a bunch of `driver_call(10h,...)`
 calls to FMPDRV.EXE and things don't seem to quite function as expected.
 
-## Function AX=98FF - Probably Driver Unload
+## Function AX=98FFh - Probably Driver Unload
 This appears to be a reset / clean call that is invoked when a "FMPLOAD.COM /u" is called. Currently
 returning AX=0
 
@@ -280,10 +283,10 @@ into a "loop mode" before starting. See above "Command/Function 01h - Open Media
 information on loop mode. This always returns zero, but as far as I can tell, nothing checks the return value.
 
 
-### Command/Function 04h - Probably Stop Media Handle
-This is likely a command to tell the player to stop or pause a video. I see Return to Zork call this on a
-specific media handle usually before it closes the handle. Also, LOTR calls down on this when the user hits
-the ESC key. Currently returns 0.
+### Command/Function 04h - Stop or Pause Media Handle
+This command tells the player to stop or pause a video. I see Return to Zork call this on a specific media
+handle usually before it closes the handle. Also, Lord of the Rings calls down on this when the user hits
+the ESC key or spacebar. Currently returns 0.
 
 ### Command/Function 09h - Set Parameter
 I'm pretty confident this is a "set parameter" function. For most of these I am just ignoring them as I do
@@ -304,9 +307,12 @@ The return value does not appear to be checked. Returning zero and ignoring for 
 Called from Return to Zork with a zero media handle and return value does not appear to be checked.
 Returning zero and ignoring for now.
 
-#### Subfunction 0409h - Unknown
-Called from Return to Zork with a zero media handle and return value does not appear to be checked.
-Returning zero and ignoring for now.
+#### Subfunction 0409h - Likely Set Resolution or Display Size.
+Looks like `param1` is the width and `param2` is the height. Called from Return to Zork with a zero
+media handle, 0x0 values, and return value does not appear to be checked. Called from Lord of the
+Rings with a zero media handle and 320x200 value. Returning zero and ignoring for now.
+
+Likely be related to subfunction 1409h below.
 
 #### Subfunction 040Ch - Unknown
 Called from Return to Zork with a zero media handle and return value does not appear to be checked.
@@ -329,6 +335,8 @@ player object with the media handle.
 #### Subfunction 1409h - Set Display Size
 Called from "FMPTEST.EXE" to set the display dimensions of the output video window. "param1" is width and
 "param2" is height. Returning zero.
+
+Likely be related to subfunction 0409h above.
 
 #### Subfunction 2408h - Set Display Position
 Called from "FMPTEST.EXE" to set the display position of the output video window. "param1" is width and
