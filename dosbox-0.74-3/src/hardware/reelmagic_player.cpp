@@ -231,6 +231,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     const int loop_enabled  = plm_get_loop(_plm);
     plm_rewind(_plm);
     plm_set_audio_enabled(_plm, FALSE);
+    plm_set_loop(_plm, FALSE);
 
     do {
       if (plm_buffer_find_start_code(_plm->video_decoder->buffer, PLM_START_PICTURE) == -1) {
