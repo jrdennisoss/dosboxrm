@@ -339,7 +339,7 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0;
 
   //
-  // Control/Play Media Handle
+  // Play Media Handle
   //
   case 0x03:
     player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
@@ -353,8 +353,11 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       player->SetLooping(true); //explicit; also set by "/l" (lowercase "L") in filepath suffix on open...
       player->Play();
       return 0; //not sure if this means success or not... nobody seems to actually check this...
+    default:
+      LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown play player command. Gonna start playing anyway and hope for the best. handle=%u command=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
+      player->Play();
+      return 0; //not sure if this means success or not... nobody seems to actually check this...
     }
-    LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown control player command. Likely things are gonna fuck up here. handle=%u command=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
     return 0;
 
   //

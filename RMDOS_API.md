@@ -269,9 +269,11 @@ video will loop/play forever until it is destroyed.
 Closes the given media handle and frees all resources associated with it. Always returns zero, but as far
 as I can tell, no one checks the return value.
 
-### Command/Function 03h - Control/Play Media Handle
-This is either "control" or "play" media handle, I'm not sure which. I have only observed the following
-sub-functions.
+### Command/Function 03h - Play Media Handle
+This is the call to "play" the given media handle, I have only observed the following sub-functions.
+
+#### Subfunction 0000h - Start Playing
+Called from The Horde. Not sure what the difference is between this one and 0001h below.
 
 #### Subfunction 0001h - Start Playing
 This tells the MPEG decoder to start playing the specified media handle. This always returns zero, but as
