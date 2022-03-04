@@ -131,7 +131,8 @@ mpgstream_readall(const struct run_state * rs, void * const buf, const unsigned 
 
 /* hacky globals just to quickly make this work */
 static FILE *_fpout = NULL;
-static unsigned _user_specified_magical_f_code = 0;
+static unsigned _user_specified_magical_f_f_code = 0;
+static unsigned _user_specified_magical_b_f_code = 0;
 static unsigned _apply_magical_correction = 0;
 
 static void
@@ -342,15 +343,15 @@ dispatch_pes_substream_objects(struct substream * const substream, const void * 
     increment_pes_substream_buffer(&substream->data, 4);
 
     ingester_func_result = (*ingester_func)(substream, substream_id);
-    if (ingester_func_result < 0) return -1; /* something failed... bailout */
-    if (substream_id == 0xB7) continue; /* XXX super hacky way to ignore end of stream zero length object */
-    if (substream_id == 0xB9) continue; /* XXX super hacky way to ignore end of stream zero length object */
-    if (ingester_func_result == 0) {
+    if (ingester_func_result == -2) {
       /* not enough data for ingester function */
       /* rewind back to start code and try again later */
       substream->data.ptr -= 4;
       substream->data.len += 4;
       break;
+    }
+    else if (ingester_func_result < 0) {
+      return -1; /* something failed... bailout... */
     }
     increment_pes_substream_buffer(&substream->data, ingester_func_result);
   }
@@ -372,11 +373,11 @@ static int
 ingest_pes_sequence_header(struct substream * const substream, const unsigned char stream_id) {
   const unsigned expected_content_size = 8;
 
-  if (expected_content_size >= 4) {
+  if (substream->data.len >= 4) {
     /* need to catch this even if we don't have a complete header */
     if ((substream->data.ptr[3] & 0xF) >= 0x9) {
       fprintf(stderr, "Magical stream detected. Applying static f_code.\n");
-      _apply_magical_correction = _user_specified_magical_f_code;
+      _apply_magical_correction = 1;
       substream->data.ptr[3] &= 0xF7; /* XXX is this correct !? or should it be hardcoded to 0x5 */
     }
   }
@@ -394,7 +395,7 @@ static int
 ingest_gop(struct substream * const substream, const unsigned char stream_id) {
   const unsigned expected_content_size = 4;
 
-  if (substream->data.len < expected_content_size) return 0; /* need more bytes */
+  if (substream->data.len < expected_content_size) return -2; /* need more bytes */
   ++substream->video_stats.gop_count;
 
   substream->video_stats.last_gop_time_code.hour     = (substream->data.ptr[0] >> 2) & 0x1f;
@@ -417,33 +418,42 @@ ingest_unknown(struct substream * const substream, const unsigned char stream_id
   const unsigned char startcode[] = {0x00, 0x00, 0x01};
 
   next_substream_object = memmem(substream->data.ptr, substream->data.len, startcode, sizeof(startcode));
-  if (next_substream_object == NULL) return 0;
+  if (next_substream_object == NULL) return -2;
   return next_substream_object - substream->data.ptr;
 }
 static int
 ingest_picture(struct substream * const substream, const unsigned char stream_id) {
   unsigned expected_content_size;
   unsigned char picture_type;
+  unsigned char *next_substream_object;
+
+  const unsigned char startcode[] = {0x00, 0x00, 0x01};
 
   expected_content_size = 4;
-  if (substream->data.len < expected_content_size) return 0; /* need more bytes */
-
-  if (_apply_magical_correction) {
-    /* need to catch this even if we don't have a complete header */
-    substream->data.ptr[3] &= 0xFC;
-    substream->data.ptr[3] |= (unsigned char)((_apply_magical_correction >> 1) & 0x3);
-  }
+  if (substream->data.len < expected_content_size) return -2; /* need more bytes */
 
   picture_type = (substream->data.ptr[1] >> 3) & 0x07;
   if ((picture_type == 2) || (picture_type == 3)) {
-    if (substream->data.len < ++expected_content_size) return 0; /* need more bytes */
+    if (_apply_magical_correction) {
+      /* need to catch this even if we don't have a complete header */
+      substream->data.ptr[3] &= 0xFC;
+      substream->data.ptr[3] |= (unsigned char)((_user_specified_magical_f_f_code >> 1) & 0x3);
+    }
+    if (substream->data.len < ++expected_content_size) return -2; /* need more bytes */
     if (_apply_magical_correction) {
       substream->data.ptr[4] &= 0x47;
-      substream->data.ptr[4] |= (unsigned char)((_apply_magical_correction & 0x1) << 7);
-      substream->data.ptr[4] |= (unsigned char)((_apply_magical_correction & 0x7) << 3);
+      substream->data.ptr[4] |= (unsigned char)((_user_specified_magical_f_f_code & 0x1) << 7);
+      substream->data.ptr[4] |= (unsigned char)((_user_specified_magical_b_f_code & 0x7) << 3);
     }
   }
 
+  next_substream_object = memmem(substream->data.ptr, substream->data.len, startcode, sizeof(startcode));
+  if (next_substream_object == NULL) return -2; /* need more bytes */
+  if (expected_content_size > (next_substream_object - substream->data.ptr)) {
+    fprintf(stderr, "Picture header parse error\n");
+    return -1; /* fatal error */
+  }
+  expected_content_size = next_substream_object - substream->data.ptr;
 
   switch(picture_type) {
   case 1: /* I picture */
@@ -484,7 +494,7 @@ ingest_slice(struct substream * const substream, const unsigned char stream_id) 
 }
 static int
 ingest_end(struct substream * const substream, const unsigned char stream_id) {
-  return 0; /* WARNING: this could potentially put things into an infinite loop! */
+  return 0;
 }
 /*
  * end of "video PES" processing functions...
@@ -665,6 +675,7 @@ populate_stream_id_handlers(struct run_state * const rs) {
 
   /* video stuff */
   rs->video_stream.ingesters[0x00] = &ingest_picture;
+  rs->video_stream.ingesters[0xB2] = &ingest_unknown;
   rs->video_stream.ingesters[0xB3] = &ingest_pes_sequence_header;
   rs->video_stream.ingesters[0xB7] = &ingest_end;
   rs->video_stream.ingesters[0xB8] = &ingest_gop;
@@ -686,11 +697,12 @@ main( int argc, char *argv[] ) {
   bzero(&rs, sizeof(rs));
   populate_stream_id_handlers(&rs);
 
-  _user_specified_magical_f_code = (unsigned)atoi(argv[1]);
-  if ((_user_specified_magical_f_code < 1) || (_user_specified_magical_f_code > 7)) {
-    fprintf(stderr, "Invalid f_code %u. Acceptable range is 1-7\n", _user_specified_magical_f_code);
+  _user_specified_magical_f_f_code = (unsigned)atoi(argv[1]);
+  if ((_user_specified_magical_f_f_code < 1) || (_user_specified_magical_f_f_code > 7)) {
+    fprintf(stderr, "Invalid f_code %u. Acceptable range is 1-7\n", _user_specified_magical_f_f_code);
     return 1;
   }
+  _user_specified_magical_b_f_code = _user_specified_magical_f_f_code;
 
   rs.filename = argv[2];
   rs.fp = fopen(rs.filename, "rb");

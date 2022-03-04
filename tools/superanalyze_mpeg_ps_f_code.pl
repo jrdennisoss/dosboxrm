@@ -70,7 +70,8 @@ while (<$sa_stdout>) {
     next;
   }
   if (/^\s*-\s*VBV Delay/) { #VBV delay is last
-      printf "tsn=%02u ffcode=$forward_f_code", $temporal_seqnum;
+      my $bfcode = ($picture_type eq 'B') ? "bfcode=$backward_f_code" : '';
+      printf "tsn=%02u ffcode=$forward_f_code $bfcode", $temporal_seqnum;
       print_delta();
       print "\n";
     next;
