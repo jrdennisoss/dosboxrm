@@ -186,6 +186,17 @@ sysheaddump(const void * const vptr, unsigned size) {
   printf("\n");
 }
 
+static inline void
+picheaddump(const void * const vptr, unsigned size) {
+  const unsigned char *ptr;
+   
+  printf("Picture Header: ");
+  for (ptr = vptr; size--; ++ptr) {
+    printf("%02hhX", *ptr);
+  }
+  printf("\n");
+}
+
 
 
 /*
@@ -347,14 +358,15 @@ dispatch_pes_substream_objects(struct substream * const substream) {
     increment_pes_substream_buffer(&substream->data, 4);
 
     ingester_func_result = (*ingester_func)(substream, substream_id);
-    if (ingester_func_result < 0) return -1; /* something failed... bailout */
-    if (ingester_func_result == 0) {
-      if (substream_id == 0xB7) return 1; /* XXX super hacky way to ignore end of stream zero length object */
+    if (ingester_func_result == -2) {
       /* not enough data for ingester function */
       /* rewind back to start code and try again later */
       substream->data.ptr -= 4;
       substream->data.len += 4;
       break;
+    }
+    else if (ingester_func_result < 0) {
+      return -1; /* something failed... bailout... */
     }
     increment_pes_substream_buffer(&substream->data, ingester_func_result);
   }
@@ -373,8 +385,12 @@ dispatch_pes_substream_objects(struct substream * const substream) {
 */
 static int
 ingest_pes_sequence_header(struct substream * const substream, const unsigned char stream_id) {
+  unsigned bitrate_field;
   const unsigned expected_content_size = 8;
-  if (substream->data.len < expected_content_size) return 0; /* need more bytes */
+
+  if (substream->data.len < expected_content_size) return -2; /* need more bytes */
+  bitrate_field = (substream->data.ptr[4]<<10) | (substream->data.ptr[5]<<2) | (substream->data.ptr[6]>>6);
+
   printf("Sequence:\n");
   printf("  - Picture Size:             %ux%u\n",
     (substream->data.ptr[0] << 4) | (substream->data.ptr[1] >> 4),
@@ -382,7 +398,10 @@ ingest_pes_sequence_header(struct substream * const substream, const unsigned ch
   printf("  - Aspect Radio Code:        0x%02X\n", substream->data.ptr[3] >> 4);
   printf("  - Frame Rate Code:          0x%02X\n", substream->data.ptr[3] & 0xF);
   printf("  - Constrained Parameters:   %s\n", (substream->data.ptr[7] & 0x4) ? "Yes" : "No");
-  printf("  - Bitrate:                  %u\n", (substream->data.ptr[4]<<10) | (substream->data.ptr[5]<<2) | (substream->data.ptr[6]>>6));
+  if (bitrate_field == 0x3FFFF)
+    printf("  - Bitrate:                  %u (VBR)\n", bitrate_field);
+  else
+    printf("  - Bitrate:                  %u (%u kbps)\n", bitrate_field, (bitrate_field * 400) / 1000);
   printf("  - VBV Buffer Size:          %u\n", ((substream->data.ptr[6]&0x1f)<<5) | (substream->data.ptr[7]>>3));
   return (int)expected_content_size;
 }
@@ -390,7 +409,7 @@ static int
 ingest_gop(struct substream * const substream, const unsigned char stream_id) {
   const unsigned expected_content_size = 4;
 
-  if (substream->data.len < expected_content_size) return 0; /* need more bytes */
+  if (substream->data.len < expected_content_size) return -2; /* need more bytes */
   printf("GOP #%u\n", substream->video_stats.gop_count);
   ++substream->video_stats.gop_count;
 
@@ -408,30 +427,39 @@ ingest_gop(struct substream * const substream, const unsigned char stream_id) {
   return (int)expected_content_size;
 }
 static int
-ingest_unknown(struct substream * const substream, const unsigned char stream_id) {
+ingest_user(struct substream * const substream, const unsigned char stream_id) {
   unsigned char *next_substream_object;
 
   const unsigned char startcode[] = {0x00, 0x00, 0x01};
 
   next_substream_object = memmem(substream->data.ptr, substream->data.len, startcode, sizeof(startcode));
-  if (next_substream_object == NULL) return 0;
-  printf("  - Slice #%hhu (Stream ID: 0x%02hhX)\n", stream_id - 1, stream_id);
-  slicedump(substream->data.ptr, next_substream_object - substream->data.ptr);
+  if (next_substream_object == NULL) return -2;
+  printf("User data (%u bytes)\n", (unsigned)(next_substream_object - substream->data.ptr));
   return next_substream_object - substream->data.ptr;
 }
 static int
 ingest_picture(struct substream * const substream, const unsigned char stream_id) {
   unsigned expected_content_size;
   unsigned char picture_type;
+  unsigned char *next_substream_object;
+
+  const unsigned char startcode[] = {0x00, 0x00, 0x01};
 
   expected_content_size = 4;
-  if (substream->data.len < expected_content_size) return 0; /* need more bytes */
+  if (substream->data.len < expected_content_size) return -2; /* need more bytes */
 
   picture_type = (substream->data.ptr[1] >> 3) & 0x07;
   if ((picture_type == 2) || (picture_type == 3)) {
-    if (substream->data.len < ++expected_content_size) return 0; /* need more bytes */
-    
+    if (substream->data.len < ++expected_content_size) return -2; /* need more bytes */
   }
+
+  next_substream_object = memmem(substream->data.ptr, substream->data.len, startcode, sizeof(startcode));
+  if (next_substream_object == NULL) return -2; /* need more bytes */
+  if (expected_content_size > (next_substream_object - substream->data.ptr)) {
+    fprintf(stderr, "Picture header parse error\n");
+    return -1; /* fatal error */
+  }
+  expected_content_size = next_substream_object - substream->data.ptr;
 
   switch(picture_type) {
   case 1: /* I picture */
@@ -477,6 +505,7 @@ ingest_picture(struct substream * const substream, const unsigned char stream_id
   }
   printf("  - Temporal Sequence Number: %u\n", (substream->data.ptr[0] << 2) | ((substream->data.ptr[1] >> 6)&0x3));
   printf("  - VBV Delay: %u\n", ((substream->data.ptr[1]&7)<<13) | (substream->data.ptr[2]<<5) | ((substream->data.ptr[3]>>3)&0x1f));
+  printf("  - "); picheaddump(substream->data.ptr, expected_content_size);
 
   ++substream->video_stats.total_picture_count;
 
@@ -484,11 +513,19 @@ ingest_picture(struct substream * const substream, const unsigned char stream_id
 }
 static int
 ingest_slice(struct substream * const substream, const unsigned char stream_id) {
-  return ingest_unknown(substream, stream_id); /* TBD */
+  unsigned char *next_substream_object;
+
+  const unsigned char startcode[] = {0x00, 0x00, 0x01};
+
+  next_substream_object = memmem(substream->data.ptr, substream->data.len, startcode, sizeof(startcode));
+  if (next_substream_object == NULL) return -2;
+  printf("  - Slice #%hhu (Stream ID: 0x%02hhX)\n", stream_id - 1, stream_id);
+  slicedump(substream->data.ptr, next_substream_object - substream->data.ptr);
+  return next_substream_object - substream->data.ptr;
 }
 static int
 ingest_end(struct substream * const substream, const unsigned char stream_id) {
-  return 0; /* WARNING: this could potentially put things into an infinite loop! */
+  return 0;
 }
 /*
  * end of "video PES" processing functions...
@@ -659,6 +696,7 @@ populate_stream_id_handlers(struct run_state * const rs) {
 
   /* video stuff */
   rs->video_stream.ingesters[0x00] = &ingest_picture;
+  rs->video_stream.ingesters[0xB2] = &ingest_user;
   rs->video_stream.ingesters[0xB3] = &ingest_pes_sequence_header;
   rs->video_stream.ingesters[0xB7] = &ingest_end;
   rs->video_stream.ingesters[0xB8] = &ingest_gop;
