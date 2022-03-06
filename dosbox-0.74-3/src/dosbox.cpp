@@ -661,6 +661,8 @@ void DOSBOX_Init(void) {
 	Pbool->Set_help("Force the FMPDRV.EXE to always be resident and not unloadable.");
 	Pbool = secprop->Add_bool("vgadup5hack",Property::Changeable::OnlyAtStart,false);
 	Pbool->Set_help("Enable the VGA DUP5 Hack. Duplicate's every VGA 5th line.");
+	Pint = secprop->Add_int("magicfhack",Property::Changeable::OnlyAtStart,0);
+	Pint->Set_help("MPEG debugging only! Consult the reelmagic_player.cpp source code and NOTES_MPEG.md");
 
 	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
 	secprop->AddInitFunction(&INT10_Init);

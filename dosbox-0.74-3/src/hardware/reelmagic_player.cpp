@@ -21,6 +21,7 @@
 //
 
 #include "reelmagic.h"
+#include "setup.h"
 #include "dos_system.h"
 #include "mixer.h"
 
@@ -36,6 +37,9 @@
 //bring in the MPEG-1 decoder library...
 #define PL_MPEG_IMPLEMENTATION
 #include "./reelmagic_pl_mpeg.h"
+
+//global config
+static int _magicalFcodeOverride = 0; //0 = no override
 
 
 
@@ -270,7 +274,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     if (_width && _height) {
       if (_plm->video_decoder->seqh_picture_rate >= 0x9) {
         LOG(LOG_REELMAGIC, LOG_NORMAL)("Detected a magical picture_rate code of 0x%X.", (unsigned)_plm->video_decoder->seqh_picture_rate);
-        const unsigned magical_f_code = FindMagicalFCode();
+        const unsigned magical_f_code = _magicalFcodeOverride ? _magicalFcodeOverride: FindMagicalFCode();
         if (magical_f_code) {
           _plm->video_decoder->motion_forward_f_code_override = magical_f_code;
           _plm->video_decoder->motion_backward_f_code_override = magical_f_code;
@@ -554,7 +558,14 @@ static void RMMixerChannelCallback(Bitu samplesNeeded) {
   }
 }
 
-void ReelMagic_InitPlayerAudioMixer(void) {
+void ReelMagic_InitPlayer(Section* sec) {
+  Section_prop * section=static_cast<Section_prop *>(sec);
+
   _rmaudio = MIXER_AddChannel(&RMMixerChannelCallback, 44100, "REELMAGC");
   _rmaudio->Enable(true); 
+
+  //XXX Remove this as it is ONLY for debugging MPEG assets!!!
+  _magicalFcodeOverride = section->Get_int("magicfhack");
+  if ((_magicalFcodeOverride < 0) || (_magicalFcodeOverride > 7))
+    E_Exit("Bad magicfhack value");
 }
