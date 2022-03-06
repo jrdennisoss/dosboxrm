@@ -2607,6 +2607,7 @@ typedef struct plm_video_t {
 	int quantizer_scale;
 	int slice_begin;
 	int macroblock_address;
+	int slice_max_macroblock_address;
 
 	int mb_row;
 	int mb_col;
@@ -2999,6 +3000,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 void plm_video_decode_slice(plm_video_t *self, int slice) {
 	self->slice_begin = TRUE;
 	self->macroblock_address = (slice - 1) * self->mb_width - 1;
+	self->slice_max_macroblock_address = self->macroblock_address + self->mb_width;
 
 	// Reset motion vectors and DC predictors
 	self->motion_backward.h = self->motion_forward.h = 0;
@@ -3017,7 +3019,7 @@ void plm_video_decode_slice(plm_video_t *self, int slice) {
 	do {
 		plm_video_decode_macroblock(self);
 	} while (
-		self->macroblock_address < self->mb_size - 1 &&
+		self->macroblock_address < self->slice_max_macroblock_address &&
 		plm_buffer_no_start_code(self->buffer)
 	);
 }
