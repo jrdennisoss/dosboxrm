@@ -216,11 +216,14 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     //the idea here is that MPEG-1 assets with a picture_rate code >= 0x9 in the MPEG sequence
     //header have screwed up f_code values. i'm not sure why but this may be some form of copy
     //and/or clone protection for ReelMagic. pictures with a temporal sequence number of either
-    //3 or 8 seem to contain a truthful f_code.
+    //3 or 8 seem to contain a truthful f_code for Return to Zork and Lord of the Rings assets
+    //4 seems to contain the truthful f_code for The Horde. The Horde also has an empty user
+    //data chunk in the picture header too which is used to identify this.
     //
     //for now, this hack scrubs the MPEG file in search of the first P or B pictures with a
-    //temporal sequence number of 3 or 8 and returns the f_code value. then the player applies
-    //the f_code as a global static forward and backward value for this entire asset.
+    //temporal sequence number of 3 or 8 (or 4 for The Horde / user data) and returns the
+    //f_code value. then the player applies the f_code as a global static forward and
+    //backward value for this entire asset.
     //
     //ultimately, this should probably be done on a per-picture basis using some sort of
     //algorithm to translate the screwed-up values on-the-fly...
@@ -238,12 +241,18 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
         break;
       }
       const unsigned temporal_seqnum = plm_buffer_read(_plm->video_decoder->buffer, 10);
-      if ((temporal_seqnum == 3) || (temporal_seqnum == 8)) {
-        const unsigned picture_type = plm_buffer_read(_plm->video_decoder->buffer, 3);
-        if ((picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE) || (picture_type == PLM_VIDEO_PICTURE_TYPE_B)) {
-          plm_buffer_skip(_plm->video_decoder->buffer, 16); // skip vbv_delay
-          plm_buffer_skip(_plm->video_decoder->buffer, 1); //skip full_px
-          result = plm_buffer_read(_plm->video_decoder->buffer, 3);
+      const unsigned picture_type = plm_buffer_read(_plm->video_decoder->buffer, 3);
+      if ((picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE) || (picture_type == PLM_VIDEO_PICTURE_TYPE_B)) {
+        plm_buffer_skip(_plm->video_decoder->buffer, 16); // skip vbv_delay
+        plm_buffer_skip(_plm->video_decoder->buffer, 1); //skip full_px
+        result = plm_buffer_read(_plm->video_decoder->buffer, 3);
+        if (plm_buffer_next_start_code(_plm->video_decoder->buffer) == PLM_START_USER_DATA) {
+          // The Horde videos tsn=4 is truthful
+          if (temporal_seqnum != 4) result = 0;
+        }
+        else {
+          // Return to Zork and Lord of the Rings videos tsn=3 and tns=8 is truthful
+          if ((temporal_seqnum != 3) && (temporal_seqnum != 8)) result = 0;
         }
       }
     } while (result == 0);

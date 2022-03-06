@@ -28,7 +28,10 @@ corrects the motion vector VLC table/decompression problems.
 
 The moving `f_code` values in the picture header appear to be related to the
 temporal sequence number. P and B picture with a temporal sequence number of
-either 3 or 8 seem to contain a truthful `f_code` value.
+either 3 or 8 seem to contain a truthful `f_code` value for Return to Zork
+and Lord of the Rings assets. P and B picture with a temporal sequence number
+of 4 seem to contain a truthful `f_code` for The Horde, however, these assets
+also contain empty "user data" between the picture and slice.
 
 
 
@@ -54,6 +57,9 @@ sequence number of either 3 or 8, so I am currently seeking to the first P or B
 picture header matching these criteria, and applying a static `f_code`
 value to all forward and backward motion vector `f_code` values for
 magical MPEG files.
+
+For picture headers containing empty "user data", I use 4 as the truthful
+temporal sequence number. (The Horde)
 
 Eventually, I think this needs to be handled on a per-picture basis.
 

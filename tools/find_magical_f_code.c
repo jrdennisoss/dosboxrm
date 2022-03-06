@@ -40,6 +40,7 @@ main(int argc, char *argv[]) {
   }
 
   plm_set_audio_enabled(plm, FALSE);
+  plm_set_loop(plm, FALSE);
   if (!plm->video_decoder) {
     if (plm->audio_decoder) {
       plm_audio_destroy(plm->audio_decoder);
@@ -66,12 +67,18 @@ main(int argc, char *argv[]) {
       break;
     }
     temporal_seqnum = plm_buffer_read(plm->video_decoder->buffer, 10);
-    if ((temporal_seqnum == 3) || (temporal_seqnum == 8)) {
-      picture_type = plm_buffer_read(plm->video_decoder->buffer, 3);
-      if ((picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE) || (picture_type == PLM_VIDEO_PICTURE_TYPE_B)) {
-        plm_buffer_skip(plm->video_decoder->buffer, 16); // skip vbv_delay
-        plm_buffer_skip(plm->video_decoder->buffer, 1); //skip full_px
-        result = plm_buffer_read(plm->video_decoder->buffer, 3);
+    picture_type = plm_buffer_read(plm->video_decoder->buffer, 3);
+    if ((picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE) || (picture_type == PLM_VIDEO_PICTURE_TYPE_B)) {
+      plm_buffer_skip(plm->video_decoder->buffer, 16); // skip vbv_delay
+      plm_buffer_skip(plm->video_decoder->buffer, 1); //skip full_px
+      result = plm_buffer_read(plm->video_decoder->buffer, 3); //forward f_code
+      if (plm_buffer_next_start_code(plm->video_decoder->buffer) == PLM_START_USER_DATA) {
+        /* The Horde */
+        if (temporal_seqnum != 4) result = 0;
+      }
+      else {
+        /* Return to Zork and Lord of the Rings */
+        if ((temporal_seqnum != 3) && (temporal_seqnum != 8)) result = 0;
       }
     }
   } while (result == 0);
