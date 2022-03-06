@@ -94,7 +94,7 @@ void ReelMagic_DeletePlayer(const ReelMagic_MediaPlayer_Handle handle);
 ReelMagic_MediaPlayer& ReelMagic_HandleToMediaPlayer(const ReelMagic_MediaPlayer_Handle handle); //throws on invalid handle
 void ReelMagic_DeleteAllPlayers();
 
-void ReelMagic_InitPlayerAudioMixer(void);
+void ReelMagic_InitPlayer(Section* /*sec*/);
 
 
 
