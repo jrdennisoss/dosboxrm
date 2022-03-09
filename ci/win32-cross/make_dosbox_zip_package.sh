@@ -12,4 +12,7 @@ cp ../../example.dosbox.conf "$PACKAGE_DIR/dosbox.conf"
 cp ../../dosbox-0.74-3/src/dosbox.exe "$PACKAGE_DIR/"
 cp "$INSTALL_PREFIX/bin/"{SDL.dll,SDL_net.dll} "$PACKAGE_DIR/"
 
+mkdir -p "$PACKAGE_DIR/diagtools"
+cp ../../tools/*.exe "$PACKAGE_DIR/diagtools/"
+
 zip -9r "$PACKAGE_DIR.zip" "$PACKAGE_DIR"
