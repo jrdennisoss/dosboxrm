@@ -14,7 +14,16 @@
 ## along with this program; if not, write to the Free Software
 ## Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+CFLAGS :=
+
+ifeq ($(ENABLE_WINCOMPAT),1) 
+  CFLAGS := -include wincompat.h
+else
+  CFLAGS :=
+endif
+
 OUTPUTS := $(patsubst %.c,%,$(wildcard *.c))
+OUTPUTS_EXE := $(patsubst %.c,%.exe,$(wildcard *.c))
 
 HEADERS := $(wildcard *.h)
 
@@ -24,9 +33,9 @@ all:
 	$(MAKE) $(OUTPUTS)
 
 clean: 
-	rm -f $(OUTPUTS) $(VLC_HEADERS)
+	rm -f $(OUTPUTS) $(OUTPUTS_EXE)
 
 %: %.c $(HEADERS)
-	$(CC) -O3 -Wall -s -o "$@" "$<"
+	$(CC) $(CFLAGS) -O3 -Wall -s -o "$@" "$<"
 
 

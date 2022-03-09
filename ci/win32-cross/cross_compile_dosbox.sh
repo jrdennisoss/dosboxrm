@@ -13,4 +13,11 @@ cd ../../dosbox-0.74-3
 ./configure --host="$TOOLCHAIN" --prefix="$INSTALL_PREFIX" --with-sdl-prefix="$INSTALL_PREFIX" \
   --enable-core-inline LDFLAGS="-static-libgcc -static-libstdc++ -s" LIBS="-lvorbisfile -lvorbis -logg"
 make -j
+cd -
+
+cd ../../tools
+CC="$TOOLCHAIN-gcc" ENABLE_WINCOMPAT=1 make clean
+CC="$TOOLCHAIN-gcc" ENABLE_WINCOMPAT=1 make -j
+cd -
+
 
