@@ -888,29 +888,21 @@ int plm_init_decoders(plm_t *self) {
 		return FALSE;
 	}
 
-	if (plm_demux_get_num_video_streams(self->demux) > 0) {
-		if (self->video_enabled) {
-			self->video_packet_type = PLM_DEMUX_PACKET_VIDEO_1;
-		}
-		self->video_buffer = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
-		plm_buffer_set_load_callback(self->video_buffer, plm_read_video_packet, self);
+	//always allocate a video decoder regardless how many streams are declared in the MPEG system header
+	if (self->video_enabled) {
+		self->video_packet_type = PLM_DEMUX_PACKET_VIDEO_1;
 	}
+	self->video_buffer = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
+	plm_buffer_set_load_callback(self->video_buffer, plm_read_video_packet, self);
+	self->video_decoder = plm_video_create_with_buffer(self->video_buffer, TRUE);
 
-	if (plm_demux_get_num_audio_streams(self->demux) > 0) {
-		if (self->audio_enabled) {
-			self->audio_packet_type = PLM_DEMUX_PACKET_AUDIO_1 + self->audio_stream_index;
-		}
-		self->audio_buffer = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
-		plm_buffer_set_load_callback(self->audio_buffer, plm_read_audio_packet, self);
+	//always allocate an audio decoder regardless how many streams are declared in the MPEG system header
+	if (self->audio_enabled) {
+		self->audio_packet_type = PLM_DEMUX_PACKET_AUDIO_1 + self->audio_stream_index;
 	}
-
-	if (self->video_buffer) {
-		self->video_decoder = plm_video_create_with_buffer(self->video_buffer, TRUE);
-	}
-
-	if (self->audio_buffer) {
-		self->audio_decoder = plm_audio_create_with_buffer(self->audio_buffer, TRUE);
-	}
+	self->audio_buffer = plm_buffer_create_with_capacity(PLM_BUFFER_DEFAULT_SIZE);
+	plm_buffer_set_load_callback(self->audio_buffer, plm_read_audio_packet, self);
+	self->audio_decoder = plm_audio_create_with_buffer(self->audio_buffer, TRUE);
 
 	self->has_decoders = TRUE;
 	return TRUE;
