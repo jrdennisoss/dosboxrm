@@ -304,7 +304,6 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     _plm->video_packet_type = PLM_DEMUX_PACKET_VIDEO_1;
     if (_plm->video_decoder) plm_video_destroy(_plm->video_decoder);
     _plm->video_decoder = plm_video_create_with_buffer(_plm->demux->buffer, FALSE);
-    CollectVideoStats();
   }
 
   static bool IsLoopFilename(const char * const filename) {
@@ -334,6 +333,12 @@ public:
     );
     _plm = plm_create_with_buffer(plmBuf, TRUE); //TRUE = destroy buffer when done
 
+    if (!plm_has_headers(_plm)) {
+      //failed to detect an MPEG-1 PS (muxed) stream... try MPEG-ES assuming video-only...
+      detetectedFileTypeVesOnly = true;
+      SetupVESOnlyDecode();
+    }
+
     //disable audio buffer load callback so pl_mpeg dont try to "auto fetch" audio samples
     //when we ask it for audio data...
     if (_plm->audio_decoder) {
@@ -344,12 +349,6 @@ public:
     plm_set_loop(_plm, _loop ? TRUE : FALSE);
     CollectVideoStats();
     advanceNextFrame(); //attempt to decode the first frame of video...
-    if (_nextFrame == NULL) {
-      //if we failed at MPEG-PS (muxed) file format, try MPEG-ES assuming video-only...
-      SetupVESOnlyDecode();
-      advanceNextFrame(); //once-more, attempt to decode the first frame of video...
-      detetectedFileTypeVesOnly = true;
-    }
     if ((_nextFrame == NULL) || (_width == 0) || (_height == 0)) {
       //something failed... asset is deemed bad at this point...
       plm_destroy(_plm);
