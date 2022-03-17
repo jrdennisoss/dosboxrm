@@ -233,6 +233,10 @@ typedef struct {
 typedef void(*plm_video_decode_callback)
 	(plm_t *self, plm_frame_t *frame, void *user);
 
+// Callback function for the video decoder once a picture header has been decoded
+
+typedef void(*plm_video_decode_picture_header_callback)
+	(plm_video_t *self, void *user);
 
 // Decoded Audio Samples
 // Samples are stored as normalized (-1, 1) float either interleaved, or if
@@ -268,7 +272,6 @@ typedef void(*plm_buffer_load_callback)(plm_buffer_t *self, void *user);
 // Callback function for plm_buffer when its requested to seek in virtual file mode
 
 typedef void(*plm_buffer_seek_callback)(plm_buffer_t *self, void *user, size_t pos);
-
 
 
 // -----------------------------------------------------------------------------
@@ -488,7 +491,6 @@ plm_buffer_t *plm_buffer_create_with_file(FILE *fh, int close_when_done);
 // to let plmpeg call fclose() on the handle when plm_destroy() is called.
 
 plm_buffer_t *plm_buffer_create_with_virtual_file(plm_buffer_load_callback load_fp, plm_buffer_seek_callback seek_fp, void *user, size_t file_size);
-
 
 // Create a buffer instance with a pointer to memory as source. This assumes
 // the whole file is in memory. The bytes are not copied. Pass 1 to 
@@ -713,6 +715,11 @@ int plm_video_has_ended(plm_video_t *self);
 // plm_video_decode() or until the video decoder is destroyed.
 
 plm_frame_t *plm_video_decode(plm_video_t *self);
+
+
+// Set a callback that is called whenever a picture header is decoded
+
+void plm_video_set_decode_picture_header_callback(plm_video_t *self, plm_video_decode_picture_header_callback fp, void *user);
 
 
 // Convert the YCrCb data of a frame into interleaved R G B data. The stride
@@ -1312,7 +1319,7 @@ int plm_seek(plm_t *self, double time, int seek_exact) {
 // plm_buffer implementation
 
 enum plm_buffer_mode {
-	PLM_BUFFER_MODE_FILE,      //if seek_callback != NULL then mode is virtual file...
+	PLM_BUFFER_MODE_FILE, //if seek_callback != NULL then mode is virtual file...
 	PLM_BUFFER_MODE_FIXED_MEM,
 	PLM_BUFFER_MODE_RING,
 	PLM_BUFFER_MODE_APPEND
@@ -1392,7 +1399,7 @@ plm_buffer_t *plm_buffer_create_with_virtual_file(plm_buffer_load_callback load_
 	self->discard_read_bytes = TRUE;
 	self->total_size = file_size;
 	plm_buffer_set_load_callback(self, load_fp, user);
-    self->seek_callback = seek_fp; //setting this to non-NULL makes it a virtual file
+	self->seek_callback = seek_fp; //setting this to non-NULL makes it a virtual file
 	return self;
 }
 
@@ -1498,12 +1505,12 @@ void plm_buffer_seek(plm_buffer_t *self, size_t pos) {
 
 	if (self->mode == PLM_BUFFER_MODE_FILE) {
 		if (self->seek_callback)
-		    (*self->seek_callback)(self, self->load_callback_user_data, pos);
+			(*self->seek_callback)(self, self->load_callback_user_data, pos);
 		else
-		    fseek(self->fh, pos, SEEK_SET);
+			fseek(self->fh, pos, SEEK_SET);
 		self->bit_index = 0;
 		self->length = 0;
-        self->file_pos = pos;
+		self->file_pos = pos;
 	}
 	else if (self->mode == PLM_BUFFER_MODE_RING) {
 		if (pos != 0) {
@@ -1548,7 +1555,7 @@ void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 	size_t bytes_available = self->capacity - self->length;
 	size_t bytes_read = fread(self->bytes + self->length, 1, bytes_available, self->fh);
 	self->length += bytes_read;
-    self->file_pos += bytes_read;
+	self->file_pos += bytes_read;
 
 	if (bytes_read == 0) {
 		self->has_ended = TRUE;
@@ -2586,15 +2593,16 @@ typedef struct plm_video_t {
 	int start_code;
 	int gop_index;
 	int gop_frames_decoded;
+	int picture_temporal_reference;
 	int picture_type;
+	int picture_extension_count;
+	int picture_user_data_count;
 
-	int motion_forward_f_code_override;
-	int motion_backward_f_code_override;
 	plm_video_motion_t motion_forward;
 	plm_video_motion_t motion_backward;
 
 	int has_sequence_header;
-    int seqh_picture_rate;
+	int seqh_picture_rate;
 
 	int quantizer_scale;
 	int slice_begin;
@@ -2624,6 +2632,9 @@ typedef struct plm_video_t {
 
 	int has_reference_frame;
 	int assume_no_b_frames;
+
+	plm_video_decode_picture_header_callback decode_picture_header_callback;
+	void *decode_picture_header_callback_user_data;
 } plm_video_t;
 
 static inline uint8_t plm_clamp(int n) {
@@ -2658,7 +2669,7 @@ plm_video_t * plm_video_create_with_buffer(plm_buffer_t *buffer, int destroy_whe
 	self->destroy_buffer_when_done = destroy_when_done;
 
 	// Attempt to decode the sequence header
-    self->gop_index = -1;
+	self->gop_index = -1;
 	self->start_code = plm_buffer_find_start_code(self->buffer, PLM_START_SEQUENCE);
 	if (self->start_code != -1) {
 		plm_video_decode_sequence_header(self);
@@ -2731,30 +2742,31 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 	plm_frame_t *frame = NULL;
 	do {
 		while (self->start_code != PLM_START_PICTURE) {
-		  if (self->start_code == PLM_START_GOP) {
-		    ++self->gop_index;
-            self->gop_frames_decoded = 0;
-            plm_buffer_read(self->buffer, 32); //TODO: do something with the GOP header?
-		  }
-		  self->start_code = plm_buffer_next_start_code(self->buffer);
-		  if (self->start_code == -1) {
-			// If we reached the end of the file and the previously decoded
-			// frame was a reference frame, we still have to return it.
-			if (
-				self->has_reference_frame &&
-				!self->assume_no_b_frames &&
-				plm_buffer_has_ended(self->buffer) && (
-					self->picture_type == PLM_VIDEO_PICTURE_TYPE_INTRA ||
-					self->picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE
-				)
-			) {
-				self->has_reference_frame = FALSE;
-				frame = &self->frame_backward;
-				break;
+			if (self->start_code == PLM_START_GOP) {
+				if (!plm_buffer_has(self->buffer, 32)) return NULL;
+				plm_buffer_skip(self->buffer, 32); //TODO: do something with the GOP header?
+				++self->gop_index;
+				self->gop_frames_decoded = 0;
 			}
+			self->start_code = plm_buffer_next_start_code(self->buffer);
+			if (self->start_code == -1) {
+				// If we reached the end of the file and the previously decoded
+				// frame was a reference frame, we still have to return it.
+				if (
+					self->has_reference_frame &&
+					!self->assume_no_b_frames &&
+					plm_buffer_has_ended(self->buffer) && (
+						self->picture_type == PLM_VIDEO_PICTURE_TYPE_INTRA ||
+						self->picture_type == PLM_VIDEO_PICTURE_TYPE_PREDICTIVE
+					)
+				) {
+					self->has_reference_frame = FALSE;
+					frame = &self->frame_backward;
+					break;
+				}
 
-			return NULL;
-          }
+				return NULL;
+			}
 		}
 
 		// Make sure we have a full picture in the buffer before attempting to
@@ -2781,28 +2793,32 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 			frame = &self->frame_forward;
 		}
 		else {
-		    if (self->frames_decoded == 0) frame = &self->frame_backward; //to capture first i picture
+			if (self->frames_decoded == 0) frame = &self->frame_backward; //to capture first i picture
 			self->has_reference_frame = TRUE;
 		}
 	} while (!frame);
 	
 	frame->time = self->time;
 	self->frames_decoded++;
-    self->gop_frames_decoded++;
+	self->gop_frames_decoded++;
 	self->time = (double)self->frames_decoded / self->framerate;
 
-    //note: due to the way we tell the buffer to ignore "discard_read_bytes" flag
-    //      during the plm_buffer_has_start_code() to capture the entire picture,
-    //      this causes a memory leak in the ES buffer because the check of the
-    //      "discard_read_bytes" variable in "plm_buffer_write()" for a video ES
-    //      never gets checked... manually checking and disposing this here...
-    if (self->buffer->discard_read_bytes) {
-      plm_buffer_discard_read_bytes(self->buffer);
-      if (self->buffer->mode == PLM_BUFFER_MODE_RING) self->buffer->total_size = 0;
-    }
-    
+	//note: due to the way we tell the buffer to ignore "discard_read_bytes" flag
+	//      during the plm_buffer_has_start_code() to capture the entire picture,
+	//      this causes a memory leak in the ES buffer because the check of the
+	//      "discard_read_bytes" variable in "plm_buffer_write()" for a video ES
+	//      never gets checked... manually checking and disposing this here...
+	if (self->buffer->discard_read_bytes) {
+		plm_buffer_discard_read_bytes(self->buffer);
+		if (self->buffer->mode == PLM_BUFFER_MODE_RING) self->buffer->total_size = 0;
+	}
 	
 	return frame;
+}
+
+void plm_video_set_decode_picture_header_callback(plm_video_t *self, plm_video_decode_picture_header_callback fp, void *user) {
+	self->decode_picture_header_callback = fp;
+	self->decode_picture_header_callback_user_data = user;
 }
 
 int plm_video_has_header(plm_video_t *self) {
@@ -2913,9 +2929,11 @@ void plm_video_init_frame(plm_video_t *self, plm_frame_t *frame, uint8_t *base) 
 }
 
 void plm_video_decode_picture(plm_video_t *self) {
-	plm_buffer_skip(self->buffer, 10); // skip temporalReference
+	self->picture_temporal_reference = plm_buffer_read(self->buffer, 10);
 	self->picture_type = plm_buffer_read(self->buffer, 3);
 	plm_buffer_skip(self->buffer, 16); // skip vbv_delay
+	self->picture_extension_count = 0;
+	self->picture_user_data_count = 0;
 
 	// D frames or unknown coding type
 	if (self->picture_type <= 0 || self->picture_type > PLM_VIDEO_PICTURE_TYPE_B) {
@@ -2929,10 +2947,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 	) {
 		self->motion_forward.full_px = plm_buffer_read(self->buffer, 1);
 		int f_code = plm_buffer_read(self->buffer, 3);
-		if (self->motion_forward_f_code_override) {
-			f_code = self->motion_forward_f_code_override;
-		}
-		else if (f_code == 0) {
+		if (f_code == 0) {
 			// Ignore picture with zero f_code
 			return;
 		}
@@ -2943,10 +2958,7 @@ void plm_video_decode_picture(plm_video_t *self) {
 	if (self->picture_type == PLM_VIDEO_PICTURE_TYPE_B) {
 		self->motion_backward.full_px = plm_buffer_read(self->buffer, 1);
 		int f_code = plm_buffer_read(self->buffer, 3);
-		if (self->motion_backward_f_code_override) {
-			f_code = self->motion_backward_f_code_override;
-		}
-		else if (f_code == 0) {
+		if (f_code == 0) {
 			// Ignore picture with zero f_code
 			return;
 		}
@@ -2965,10 +2977,20 @@ void plm_video_decode_picture(plm_video_t *self) {
 	// Find first slice start code; skip extension and user data
 	do {
 		self->start_code = plm_buffer_next_start_code(self->buffer);
+		switch(self->start_code) {
+		case PLM_START_EXTENSION: ++self->picture_extension_count; break;
+		case PLM_START_USER_DATA: ++self->picture_user_data_count; break;
+		}
 	} while (
 		self->start_code == PLM_START_EXTENSION || 
 		self->start_code == PLM_START_USER_DATA
 	);
+
+	// Call the decode picture header callback if it needs to make
+	// any modifications before slice decoding...
+	if (self->decode_picture_header_callback) {
+		(*self->decode_picture_header_callback)(self, self->decode_picture_header_callback_user_data);
+	}
 
 	// Decode all slices
 	while (PLM_START_IS_SLICE(self->start_code)) {

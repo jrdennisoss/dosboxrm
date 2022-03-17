@@ -46,6 +46,12 @@ order to get things properly working in DOSBox, I had to make a few changes
 to the MPEG decoder. More information on this can be found in the
 `NOTES_MPEG.md` file.
 
+## Known Game Bugs
+
+Game bugs that are known to exist in both this emulator AND that also happen
+wich a real hardware setup are documented in the `KNOWN_GAME_BUGS.md` file.
+This helps with not spending too much time chasing phantom issues.
+
 
 # Changes to DOSBox
 
@@ -61,6 +67,8 @@ The parameters are:
 * `enabled`        -- Enables/disables the ReelMagic emulator. By default this is `true`
 * `alwaysresident` -- This forces `FMPDRV.EXE` to always be loaded.  By default this is `false`
 * `vgadup5hack`    -- Duplicate every 5th VGA line to help give output a 4:3 ratio. By default this is `false`
+* `magicfhack`     -- Use for MPEG video debugging purposes only. See `reelmagic_player.cpp` for what exactly this does to the MPEG decoder.
+* `a204debug`      -- Controls FMPDRV.EXE function Ah subfunction 204h debug logging. Only applicable in "heavy debugging" build.
 
 
 For example:

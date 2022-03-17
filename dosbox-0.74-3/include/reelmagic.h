@@ -36,7 +36,7 @@ struct ReelMagic_VideoMixerUnderlayProvider {
 
   virtual Bit16u GetPictureWidth() const = 0;
   virtual Bit16u GetPictureHeight() const = 0;
-  virtual Bit16u GetZOrder() const = 0;
+  virtual bool   GetUnderVga() const = 0;
 };
 
 void ReelMagic_RENDER_SetPal(Bit8u entry,Bit8u red,Bit8u green,Bit8u blue);
@@ -50,7 +50,6 @@ extern ReelMagic_ScalerLineHandler_t ReelMagic_RENDER_DrawLine;
 void ReelMagic_SetVideoMixerEnabled(const bool enabled);
 void ReelMagic_PushVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider);
 void ReelMagic_PopVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider);
-void ReelMagic_VideoMixerUnderlayProviderZOrderUpdate(void);
 void ReelMagic_InitVideoMixer(Section* /*sec*/);
 
 
@@ -59,6 +58,9 @@ void ReelMagic_InitVideoMixer(Section* /*sec*/);
 //
 // player stuff
 //
+
+#define REELMAGIC_MAX_HANDLES (16)
+typedef Bit8u ReelMagic_MediaPlayer_Handle;
 struct ReelMagic_MediaPlayerFile {
   virtual ~ReelMagic_MediaPlayerFile() {}
   virtual const char *GetFileName() const = 0;
@@ -68,25 +70,30 @@ struct ReelMagic_MediaPlayerFile {
 };
 struct ReelMagic_MediaPlayer {
   virtual ~ReelMagic_MediaPlayer() {}
+  virtual ReelMagic_MediaPlayer_Handle GetBaseHandle()  const = 0;
+  virtual ReelMagic_MediaPlayer_Handle GetDemuxHandle() const = 0;
+  virtual ReelMagic_MediaPlayer_Handle GetVideoHandle() const = 0;
+  virtual ReelMagic_MediaPlayer_Handle GetAudioHandle() const = 0;
+
   virtual void SetDisplayPosition(const Bit16u x, const Bit16u y) = 0;
   virtual void SetDisplaySize(const Bit16u width, const Bit16u height) = 0;
-  virtual void SetZOrder(const Bit16u value) = 0;
+  virtual void SetUnderVga(const bool value) = 0;
   virtual void SetLooping(const bool value) = 0;
 
-  virtual bool IsFileValid() const = 0;
+  virtual bool HasSystem() const = 0;
+  virtual bool HasVideo() const = 0;
+  virtual bool HasAudio() const = 0;
   virtual bool IsLooping() const = 0;
   virtual bool IsPlaying() const = 0;
 
   virtual Bit16u GetPictureWidth() const = 0;
   virtual Bit16u GetPictureHeight() const = 0;
-  virtual Bit16u GetZOrder() const = 0;
+  virtual bool   GetUnderVga() const = 0;
 
   virtual void Play() = 0;
   virtual void Pause() = 0;
   virtual void Stop() = 0;
 };
-
-typedef Bit8u ReelMagic_MediaPlayer_Handle;
 
 //note: once a player file object is handed to new/delete player, regardless of success, it will be cleaned up
 ReelMagic_MediaPlayer_Handle ReelMagic_NewPlayer(struct ReelMagic_MediaPlayerFile * const playerFile);

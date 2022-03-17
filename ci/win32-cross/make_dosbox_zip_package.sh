@@ -10,6 +10,7 @@ rm -Rf "$PACKAGE_DIR" "$PACKAGE_DIR.zip"
 mkdir -p "$PACKAGE_DIR"
 cp ../../example.dosbox.conf "$PACKAGE_DIR/dosbox.conf"
 cp ../../dosbox-0.74-3/src/dosbox.exe "$PACKAGE_DIR/"
+cp ../../dosbox-0.74-3/src/dosbox_heavydebug.exe "$PACKAGE_DIR/"
 cp "$INSTALL_PREFIX/bin/"{SDL.dll,SDL_net.dll} "$PACKAGE_DIR/"
 
 mkdir -p "$PACKAGE_DIR/diagtools"
