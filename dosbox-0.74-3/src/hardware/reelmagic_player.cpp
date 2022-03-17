@@ -144,9 +144,12 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   // creation parameters...
   ReelMagic_MediaPlayerFile * const   _file;
   const ReelMagic_MediaPlayer_Handle  _handle;
+  ReelMagic_MediaPlayer_Handle        _demuxHandle;
+  ReelMagic_MediaPlayer_Handle        _videoHandle;
+  ReelMagic_MediaPlayer_Handle        _audioHandle;
 
   // running / adjustable variables...
-  Bit16u                              _zorder;
+  bool                                _underVga;
   bool                                _loop;
   bool                                _playing;
 
@@ -162,6 +165,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   Bit16u                              _width;
   Bit16u                              _height;
   double                              _framerate;
+  Bit8u                               _magicalRSizeOverride;
 
   AudioSampleFIFO                     _audioFifo;
 
@@ -192,6 +196,16 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     }
     catch (...) {
       //XXX what to do on failure !?
+    }
+  }
+
+  static void plmDecodeMagicalPictureHeaderCallback(plm_video_t *self, void *user) {
+    switch (self->picture_type) {
+    case PLM_VIDEO_PICTURE_TYPE_B:
+      self->motion_backward.r_size = ((ReelMagic_MediaPlayerImplementation*)user)->_magicalRSizeOverride;
+      //fallthrough
+    case PLM_VIDEO_PICTURE_TYPE_PREDICTIVE:
+      self->motion_forward.r_size = ((ReelMagic_MediaPlayerImplementation*)user)->_magicalRSizeOverride;
     }
   }
 
@@ -276,14 +290,14 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
         LOG(LOG_REELMAGIC, LOG_NORMAL)("Detected a magical picture_rate code of 0x%X.", (unsigned)_plm->video_decoder->seqh_picture_rate);
         const unsigned magical_f_code = _magicalFcodeOverride ? _magicalFcodeOverride: FindMagicalFCode();
         if (magical_f_code) {
-          _plm->video_decoder->motion_forward_f_code_override = magical_f_code;
-          _plm->video_decoder->motion_backward_f_code_override = magical_f_code;
-          LOG(LOG_REELMAGIC, LOG_NORMAL)("Applying static %u:%u f_code override", (unsigned)_plm->video_decoder->motion_forward_f_code_override, (unsigned)_plm->video_decoder->motion_backward_f_code_override);
+          _magicalRSizeOverride = magical_f_code - 1;
+          plm_video_set_decode_picture_header_callback(_plm->video_decoder, &plmDecodeMagicalPictureHeaderCallback, this);
+          LOG(LOG_REELMAGIC, LOG_NORMAL)("Applying static %u:%u f_code override", magical_f_code, magical_f_code);
         }
         else {
           LOG(LOG_REELMAGIC, LOG_WARN)("No magical f_code found. Playback will likely be screwed up!");
         }
-        _plm->video_decoder->framerate = PLM_VIDEO_PICTURE_RATE[0x7 & _plm->video_decoder->seqh_picture_rate]; //im pretty sure this is correct
+        _plm->video_decoder->framerate = PLM_VIDEO_PICTURE_RATE[0x7 & _plm->video_decoder->seqh_picture_rate];
       }
       if (_plm->video_decoder->framerate == 0.000) {
         LOG(LOG_REELMAGIC, LOG_ERROR)("Detected a bad framerate. Hardcoding to 30. This video will likely not work at all.");
@@ -316,12 +330,16 @@ public:
   ReelMagic_MediaPlayerImplementation(ReelMagic_MediaPlayerFile * const file, const ReelMagic_MediaPlayer_Handle handle) :
     _file(file),
     _handle(handle),
-    _zorder(0), //default is highest priority (nearest) Z-Order... TBD if this is the right default...
+    _demuxHandle(0),
+    _videoHandle(0),
+    _audioHandle(0),
+    _underVga(false),
     _loop(IsLoopFilename(_file->GetFileName())),
     _playing(false),
     _vgaFps(0.0f),
     _plm(NULL),
-    _nextFrame(NULL) {
+    _nextFrame(NULL),
+    _magicalRSizeOverride(0) {
 
     bool detetectedFileTypeVesOnly = false;
 
@@ -337,6 +355,10 @@ public:
       //failed to detect an MPEG-1 PS (muxed) stream... try MPEG-ES assuming video-only...
       detetectedFileTypeVesOnly = true;
       SetupVESOnlyDecode();
+      _videoHandle = _handle;
+    }
+    else {
+      _demuxHandle = _handle;
     }
 
     //disable audio buffer load callback so pl_mpeg dont try to "auto fetch" audio samples
@@ -372,6 +394,34 @@ public:
     delete _file;
   }
 
+
+  //
+  // function for accessing this class just in this file...
+  //
+  Bitu GetHandlesNeeded() const {
+    Bitu rv = 0;
+    if (HasSystem()) ++rv;
+    if (HasVideo())  ++rv;
+    if (HasAudio())  ++rv;
+    if (rv == 0) rv=1;
+    return rv;
+  }
+  void DeclareAuxHandle(const ReelMagic_MediaPlayer_Handle auxHandle) {
+    //this is so damn hacky :-( 
+    if (_videoHandle == 0) {
+      _videoHandle = auxHandle;
+      return;
+    }
+    if (_audioHandle == 0) {
+      _audioHandle = auxHandle;
+      return;
+    }
+    LOG(LOG_REELMAGIC, LOG_WARN)("Declaring too many handles!");
+  }
+
+
+
+
   //
   // ReelMagic_VideoMixerUnderlayProvider implementation here...
   //
@@ -406,30 +456,44 @@ public:
 
   //Bit16u GetPictureWidth() const {return _width;} -- is implemented below as it exists in both base "interfaces"
   //Bit16u GetPictureHeight() const {return _height;} -- is implemented below as it exists in both base "interfaces"
-  //Bit16u GetZOrder() const -- is implemented below as it exists in both base "interfaces"
+  //bool   GetUnderVga() const -- is implemented below as it exists in both base "interfaces"
 
 
 
   //
   // ReelMagic_MediaPlayer implementation here...
   //
+  ReelMagic_MediaPlayer_Handle GetBaseHandle() const {  return _handle; }
+  ReelMagic_MediaPlayer_Handle GetDemuxHandle() const { return _demuxHandle; }
+  ReelMagic_MediaPlayer_Handle GetVideoHandle() const { return _videoHandle; }
+  ReelMagic_MediaPlayer_Handle GetAudioHandle() const { return _audioHandle; }
+
   void SetDisplayPosition(const Bit16u x, const Bit16u y) {
     LOG(LOG_REELMAGIC, LOG_ERROR)("Set Player Display Position Not Implemented!");
   }
   void SetDisplaySize(const Bit16u width, const Bit16u height) {
     LOG(LOG_REELMAGIC, LOG_ERROR)("Set Player Display Size Not Implemented!");
   }
-  void SetZOrder(const Bit16u value) {
-    if (_zorder == value) return;
-    _zorder = value;
-    if (_playing) ReelMagic_VideoMixerUnderlayProviderZOrderUpdate();
+  void SetUnderVga(const bool value) {
+    if (_underVga == value) return;
+    _underVga = value;
+    if (_playing) ReelMagic_PushVideoMixerUnderlayProvider(*this);
   }
   void SetLooping(const bool value) {
     _loop = value;
     if (_plm != NULL) plm_set_loop(_plm, _loop ? TRUE : FALSE);
   }
-  bool IsFileValid() const {
-    return _plm != NULL;
+  bool HasSystem() const {
+    if (_plm == NULL) return false;
+    return _plm->demux->buffer != _plm->video_decoder->buffer;
+  }
+  bool HasVideo() const {
+    if (_plm == NULL) return false;
+    return plm_get_video_enabled(_plm) != FALSE;
+  }
+  bool HasAudio() const {
+    if (_plm == NULL) return false;
+    return plm_get_audio_enabled(_plm) != FALSE;
   }
   bool IsLooping() const {
     return _loop;
@@ -440,10 +504,10 @@ public:
 
   Bit16u GetPictureWidth()      const {return _width;}
   Bit16u GetPictureHeight()     const {return _height;}
-  Bit16u GetZOrder()            const {return _zorder;}
+  bool   GetUnderVga()          const {return _underVga;}
 
   void Play() {
-    if (!IsFileValid()) return;
+    if (_plm == NULL) return;
     _playing = true;
     ReelMagic_PushVideoMixerUnderlayProvider(*this);
     ActivatePlayerAudioFifo(_audioFifo);
@@ -461,46 +525,94 @@ public:
 
 
 //
-//stuff to manage player instances and handles to them...
-//note: handles are _players[] index + 1 as "FMPDRV.EXE" uses 0 as invalid handle
+//stuff to manage ReelMagic media/decoder/player handles...
+//note: handles are _rmhandles[] index + 1 as "FMPDRV.EXE" uses 0 as invalid handle
 //
-static const Bit8u MAX_RM_PLAYERS = 10;
-static ReelMagic_MediaPlayer *_players[MAX_RM_PLAYERS] = {NULL};
+static ReelMagic_MediaPlayerImplementation *_rmhandles[REELMAGIC_MAX_HANDLES] = {NULL};
 
+static Bitu ComputeFreePlayerHandleCount() {
+  Bitu rv = 0;
+  for (Bitu i = 0; i < REELMAGIC_MAX_HANDLES; ++i) {
+    if (_rmhandles[i] == NULL) ++rv;
+  }
+  return rv;
+}
 
 ReelMagic_MediaPlayer_Handle ReelMagic_NewPlayer(struct ReelMagic_MediaPlayerFile * const playerFile) {
+  //so why all this mickey-mouse for simply allocating a handle?
+  //the real setup allocates one handle per decoder resource
+  //for example, if an MPEG file is opened that only contains a video ES,
+  //then only one handle is allocated
+  //however, if an MPEG PS file is openened that contains both A/V ES streams,
+  //then three handles are allocated. One for system, one for audio, one for video
+  //
+  //to ensure maximum compatibility, we must also emulate this behavior
+
+  const Bitu freeHandles = ComputeFreePlayerHandleCount();
+  Bit8u handleIndex;
+
   try {
-    for (Bit8u i = 0; i < MAX_RM_PLAYERS; ++i) {
-      if (_players[i] == NULL) {
-        _players[i] = new ReelMagic_MediaPlayerImplementation(playerFile, i+1);
-        return i+1;
+    if (freeHandles < 1) throw RMException("Out of handles!");
+    for (handleIndex = 0; handleIndex < REELMAGIC_MAX_HANDLES; ++handleIndex) {
+      if (_rmhandles[handleIndex] == NULL) {
+        _rmhandles[handleIndex] = new ReelMagic_MediaPlayerImplementation(playerFile, handleIndex+1);
+        break;
       }
     }
-    throw RMException("Out of player handles!");
   }
   catch (...) {
     delete playerFile;
     throw;
   }
+
+  Bitu handlesNeeded = _rmhandles[handleIndex]->GetHandlesNeeded();
+  if (freeHandles < handlesNeeded) {
+    delete _rmhandles[handleIndex];
+    _rmhandles[handleIndex] = NULL;
+    throw RMException("Out of handles!");
+  }
+
+  Bitu additionalHandleIndex = handleIndex;
+  while (--handlesNeeded) {
+    while (_rmhandles[++additionalHandleIndex] != NULL);
+    _rmhandles[handleIndex]->DeclareAuxHandle(additionalHandleIndex+1);
+    _rmhandles[additionalHandleIndex] = _rmhandles[handleIndex];
+    LOG(LOG_REELMAGIC, LOG_NORMAL)("Consuming additional handle #%u for base handle #%u", (unsigned)(additionalHandleIndex+1), (unsigned)(handleIndex+1));
+  }
+
+  return handleIndex + 1; //all ReelMagic media handles are non-zero
 }
 
 void ReelMagic_DeletePlayer(const ReelMagic_MediaPlayer_Handle handle) {
   ReelMagic_MediaPlayer *player = &ReelMagic_HandleToMediaPlayer(handle);
   delete player;
-  _players[handle-1] = NULL;
+  for (Bitu i = 0; i < REELMAGIC_MAX_HANDLES; ++i) {
+    if (_rmhandles[i] == player) {
+      _rmhandles[i] = NULL;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Freeing handle #%u", (unsigned)(i+1));
+    }
+  }
 }
 
 ReelMagic_MediaPlayer& ReelMagic_HandleToMediaPlayer(const ReelMagic_MediaPlayer_Handle handle) {
-  if ((handle == 0) || (handle > MAX_RM_PLAYERS)) throw RMException("Invalid player handle #%u", (unsigned)handle);
-  ReelMagic_MediaPlayer * const player = _players[handle-1];
+  if ((handle == 0) || (handle > REELMAGIC_MAX_HANDLES)) throw RMException("Invalid handle #%u", (unsigned)handle);
+  ReelMagic_MediaPlayer * const player = _rmhandles[handle-1];
   if (player == NULL) throw RMException("No active player at handle #%u", (unsigned)handle);
   return *player;
 }
 
 void ReelMagic_DeleteAllPlayers() {
-  for (Bit8u i = 0; i < MAX_RM_PLAYERS; ++i) {
-    delete _players[i];
-    _players[i] = NULL;
+  for (Bit8u i = 0; i < REELMAGIC_MAX_HANDLES; ++i) {
+    if (_rmhandles[i] == NULL) continue;
+    delete _rmhandles[i];
+    for (Bit8u j = i+1; j < REELMAGIC_MAX_HANDLES; ++j) {
+      if (_rmhandles[j] == _rmhandles[i]) {
+        _rmhandles[j] = NULL;
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Freeing handle #%u", (unsigned)(j+1));
+      }
+    }
+    _rmhandles[i] = NULL;
+    LOG(LOG_REELMAGIC, LOG_NORMAL)("Freeing handle #%u", (unsigned)(i+1));
   }
 }
 

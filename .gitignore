@@ -10,6 +10,7 @@ dosbox-*/**/.deps
 dosbox-*/stamp-h1
 dosbox-*/src/dosbox
 dosbox-*/src/dosbox.exe
+dosbox-*/src/dosbox_heavydebug.exe
 
 
 

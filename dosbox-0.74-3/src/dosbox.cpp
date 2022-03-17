@@ -663,6 +663,8 @@ void DOSBOX_Init(void) {
 	Pbool->Set_help("Enable the VGA DUP5 Hack. Duplicate's every VGA 5th line.");
 	Pint = secprop->Add_int("magicfhack",Property::Changeable::OnlyAtStart,0);
 	Pint->Set_help("MPEG debugging only! Consult the reelmagic_player.cpp source code and NOTES_MPEG.md");
+	Pbool = secprop->Add_bool("a204debug",Property::Changeable::OnlyAtStart,true);
+	Pbool->Set_help("Turns on/off FMPDRV.EXE function Ah subfunction 204h debug logging. Only works in heavy debugging mode. Consult the reelmagic_driver.cpp source code and RMDOS_API.md");
 
 	secprop=control->AddSection_prop("joystick",&BIOS_Init,false);//done
 	secprop->AddInitFunction(&INT10_Init);

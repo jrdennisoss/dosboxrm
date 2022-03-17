@@ -51,26 +51,47 @@ namespace {
 //explicit definition of the different pixel types...
 //being a bit redundant here as an attempt to keep this 
 //already complicated logic somewhat readable
+namespace {
 struct RenderOutputPixel {
   Bit8u blue;
   Bit8u green;
   Bit8u red;
   Bit8u alpha;
 };
+
 struct VGA16bppPixel {
   /* ??? */
+  template <typename T> inline void CopyRGBTo(T& out) { }
+  inline bool IsTransparent() const { return false; }
 };
+
 struct VGA32bppPixel {
   Bit8u blue;
   Bit8u green;
   Bit8u red;
   Bit8u alpha;
+  template <typename T> inline void CopyRGBTo(T& out) const {out.red=red; out.green=green; out.blue=blue;}
 };
+struct VGAUnder32bppPixel : VGA32bppPixel { inline bool IsTransparent() const { return true; } };
+struct VGAOver32bppPixel  : VGA32bppPixel { inline bool IsTransparent() const { return (red|green|blue) == 0; } };
+
+struct VGAPalettePixel {
+  static VGA32bppPixel _vgaPalette[256];
+  Bit8u index;
+  template <typename T> inline void CopyRGBTo(T& out) const { _vgaPalette[index].CopyRGBTo(out); }
+  inline bool IsTransparent() const { return index == 0; }
+};
+struct VGAUnderPalettePixel : VGAPalettePixel { inline bool IsTransparent() const { return true; } };
+struct VGAOverPalettePixel  : VGAPalettePixel { inline bool IsTransparent() const { return index == 0; } };
+
 struct PlayerPicturePixel {
   Bit8u red;
   Bit8u green;
   Bit8u blue;
+  template <typename T> inline void CopyRGBTo(T& out) const {out.red=red; out.green=green; out.blue=blue;}
+  inline bool IsTransparent() const {return false;}
 };
+}
 
 
 //
@@ -83,7 +104,7 @@ static bool                     _mpegDictatesOutputSize   = false; //false if VG
 static bool                     _vgaDup5Enabled           = false;
 
 //state captured from VGA
-static VGA32bppPixel            _vgaPalette[256];
+VGA32bppPixel                   VGAPalettePixel::_vgaPalette[256];
 static Bitu                     _vgaWidth                 = 0;
 static Bitu                     _vgaHeight                = 0;
 static Bitu                     _vgaBitsPerPixel          = 0; // != 0 on this variable means we have collected the first call
@@ -122,51 +143,19 @@ static Bitu                                               _renderHeight         
 //      workaround to make this look nice and clean for the mean time....
 //      also, as i'm carrying around an alpha channel, i should probably put that to good use...
 //
-static inline void MixPixel(RenderOutputPixel& out, const VGA32bppPixel& inputVgaPixel, const PlayerPicturePixel& inputMpegPixel) {
-  if ((inputVgaPixel.red | inputVgaPixel.green | inputVgaPixel.blue) == 0) {
-    //VGA pixel is "pure black"... use this as the transparent color for underlaying the video on to
-    out.red    = inputMpegPixel.red;
-    out.green  = inputMpegPixel.green;
-    out.blue   = inputMpegPixel.blue;
-  }
-  else {
-    //VGA pixel is not "pure black"... output VGA only here...
-    out.red    = inputVgaPixel.red;
-    out.green  = inputVgaPixel.green;
-    out.blue   = inputVgaPixel.blue;
-  }
-  out.alpha = 0;
-}
-static inline void MixPixel(RenderOutputPixel& out, const Bit8u inputVgaPaletteIndex, const PlayerPicturePixel& inputMpegPixel) {
-  if (inputVgaPaletteIndex == 0) {
-    //VGA pixel is index 0... use this as the "transparent color" for underlaying the video on to
-    out.red    = inputMpegPixel.red;
-    out.green  = inputMpegPixel.green;
-    out.blue   = inputMpegPixel.blue;
-  }
-  else {
-    //VGA pixel is not "transparent"... output VGA only here...
-    const VGA32bppPixel& inputVgaPixel = _vgaPalette[inputVgaPaletteIndex];
-    out.red    = inputVgaPixel.red;
-    out.green  = inputVgaPixel.green;
-    out.blue   = inputVgaPixel.blue;
-  }
+template <typename VGAPixelT, typename MPEGPixelT>
+static inline void MixPixel(RenderOutputPixel& out, const VGAPixelT& vga, const MPEGPixelT& mpeg) {
+  if (vga.IsTransparent())
+    mpeg.CopyRGBTo(out);
+  else
+    vga.CopyRGBTo(out);
   out.alpha = 0;
 }
 
-static inline void MixPixel(RenderOutputPixel& out, const VGA32bppPixel& inputVgaPixel) {
-   out.red    = inputVgaPixel.red;
-   out.green  = inputVgaPixel.green;
-   out.blue   = inputVgaPixel.blue;
-   out.alpha  = 0;
-}
-
-static inline void MixPixel(RenderOutputPixel& out, const Bit8u inputVgaPaletteIndex) {
-  const VGA32bppPixel& inputVgaPixel = _vgaPalette[inputVgaPaletteIndex];
-  out.red    = inputVgaPixel.red;
-  out.green  = inputVgaPixel.green;
-  out.blue   = inputVgaPixel.blue;
-  out.alpha  = 0;
+template <typename VGAPixelT>
+static inline void MixPixel(RenderOutputPixel& out, const VGAPixelT& vga) {
+  vga.CopyRGBTo(out);
+  out.alpha = 0;
 }
 
 static void ClearMpegUnderlayBuffer(const PlayerPicturePixel& p) {
@@ -211,15 +200,22 @@ static void RMR_DrawLine_MixerError(const void *src) {
 }
 
 //its not real enterprise C++ until yer mixing macros and templates...
-#define CREATE_RMR_VGA_TYPED_FUNCTIONS(DRAWLINE_FUNC_NAME)                                                  \
-  static void DRAWLINE_FUNC_NAME##_VGA8(const void *src)  {DRAWLINE_FUNC_NAME((const Bit8u *)src);}         \
-  static void DRAWLINE_FUNC_NAME##_VGA32(const void *src) {DRAWLINE_FUNC_NAME((const VGA32bppPixel*)src);}
+#define CREATE_RMR_VGA_TYPED_FUNCTIONS(DRAWLINE_FUNC_NAME)                                                           \
+  static void DRAWLINE_FUNC_NAME##_VGAO8(const void *src)  {DRAWLINE_FUNC_NAME((const VGAOverPalettePixel *)src);}   \
+  static void DRAWLINE_FUNC_NAME##_VGAO32(const void *src) {DRAWLINE_FUNC_NAME((const VGAOver32bppPixel*)src);}      \
+  static void DRAWLINE_FUNC_NAME##_VGAU8(const void *src)  {DRAWLINE_FUNC_NAME((const VGAUnderPalettePixel *)src);}  \
+  static void DRAWLINE_FUNC_NAME##_VGAU32(const void *src) {DRAWLINE_FUNC_NAME((const VGAUnder32bppPixel*)src);}     \
 
-#define ASSIGN_RMR_DRAWLINE_FUNCTION(DRAWLINE_FUNC_NAME, VGA_BPP) {           \
-  switch(VGA_BPP) {                                                           \
-  case 8:  ReelMagic_RENDER_DrawLine = &DRAWLINE_FUNC_NAME##_VGA8;  break;    \
-  case 32: ReelMagic_RENDER_DrawLine = &DRAWLINE_FUNC_NAME##_VGA32; break;    \
-  default: ReelMagic_RENDER_DrawLine = &RMR_DrawLine_MixerError;    break;    \
+#define ASSIGN_RMR_DRAWLINE_FUNCTION(DRAWLINE_FUNC_NAME, VGA_BPP, VGA_OVER) { \
+  if (VGA_OVER) switch(VGA_BPP) {                                             \
+  case 8:  ReelMagic_RENDER_DrawLine = &DRAWLINE_FUNC_NAME##_VGAO8;  break;   \
+  case 32: ReelMagic_RENDER_DrawLine = &DRAWLINE_FUNC_NAME##_VGAO32; break;   \
+  default: ReelMagic_RENDER_DrawLine = &RMR_DrawLine_MixerError;     break;   \
+  }                                                                           \
+  else switch(VGA_BPP) {                                                      \
+  case 8:  ReelMagic_RENDER_DrawLine = &DRAWLINE_FUNC_NAME##_VGAU8;  break;   \
+  case 32: ReelMagic_RENDER_DrawLine = &DRAWLINE_FUNC_NAME##_VGAU32; break;   \
+  default: ReelMagic_RENDER_DrawLine = &RMR_DrawLine_MixerError;     break;   \
   }                                                                           \
 }
 
@@ -423,10 +419,10 @@ static void SetupVideoMixer(const bool updateRenderMode) {
   // call when starting/stopping a video to give the user that smooth hardware decoder feel :-)
   if (!mpeg) {
     if (_vgaDup5Enabled) {
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAOnlyDup5Vertical, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAOnlyDup5Vertical, _vgaBitsPerPixel, true);
     }
     else {
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAOnly, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAOnly, _vgaBitsPerPixel, true);
     }
     LOG(LOG_REELMAGIC, LOG_NORMAL)("Video Mixer Mode VGA Only (vga=%ux%u mpeg=off render=%ux%u)", (unsigned)_vgaWidth, (unsigned)_vgaHeight, (unsigned)_renderWidth, (unsigned)_renderHeight);
     return;
@@ -434,6 +430,7 @@ static void SetupVideoMixer(const bool updateRenderMode) {
 
 
   //choose a RENDER draw function...
+  const bool vgaOver = mpeg->GetUnderVga();
   const char * modeStr = "UNKNOWN";
   if (_mpegDictatesOutputSize) {
     E_Exit("MPEG output size not yet implemented!");
@@ -443,33 +440,33 @@ static void SetupVideoMixer(const bool updateRenderMode) {
       if ((_renderWidth != _mpegUnderlayWidth) || (_renderHeight != _mpegUnderlayHeight)) {
         modeStr = "Generic Unoptimized MPEG Resize to DUP5 VGA Pictures";
         Initialize_RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_Dimensions();
-        ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5, _vgaBitsPerPixel);
+        ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5, _vgaBitsPerPixel, vgaOver);
       }
       else {
         modeStr = "Matching Sized MPEG to DUP5 VGA Pictures";
-        ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGADup5VerticalMPEGSameSize, _vgaBitsPerPixel);
+        ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGADup5VerticalMPEGSameSize, _vgaBitsPerPixel, vgaOver);
       }
     }
     else if ((_vgaWidth == _mpegUnderlayWidth) && (_vgaHeight == _mpegUnderlayHeight)) {
       modeStr = "Matching Sized MPEG to VGA Pictures";
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAMPEGSameSize, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAMPEGSameSize, _vgaBitsPerPixel, vgaOver);
     }
     else if ((_vgaWidth == (_mpegUnderlayWidth*2)) && (_vgaHeight == ((_mpegUnderlayHeight*2)))) {
       modeStr = "Double Sized MPEG to VGA Pictures";
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_MPEGDoubleVGASize, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_MPEGDoubleVGASize, _vgaBitsPerPixel, vgaOver);
     }
     else if ((_vgaWidth == _mpegUnderlayWidth) && ((_mpegUnderlayHeight / (_mpegUnderlayHeight - _vgaHeight)) == 6)) {
       modeStr = "Matching Sized MPEG to VGA Pictures, skipping every 6th MPEG line";
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_VGAMPEGSameWidthSkip6Vertical, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_VGAMPEGSameWidthSkip6Vertical, _vgaBitsPerPixel, vgaOver);
     }
     else if ((_vgaWidth == (_mpegUnderlayWidth*2)) && (((_mpegUnderlayHeight*2) / ((_mpegUnderlayHeight*2) - _vgaHeight)) == 6)) {
       modeStr = "Double Sized MPEG to VGA Pictures, skipping every 6th MPEG line";
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_VGAMPEGDoubleSameWidthSkip6Vertical, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_VGAMPEGDoubleSameWidthSkip6Vertical, _vgaBitsPerPixel, vgaOver);
     }
     else {
       modeStr = "Generic Unoptimized MPEG Resize";
       Initialize_RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_Dimensions();
-      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_GeneralResizeMPEGToVGA, _vgaBitsPerPixel);
+      ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_GeneralResizeMPEGToVGA, _vgaBitsPerPixel, vgaOver);
     }
   }
 
@@ -487,7 +484,7 @@ static void SetupVideoMixer(const bool updateRenderMode) {
 // The RENDER_*() interceptors begin here...
 //
 void ReelMagic_RENDER_SetPal(Bit8u entry,Bit8u red,Bit8u green,Bit8u blue) {
-  VGA32bppPixel& p = _vgaPalette[entry];
+  VGA32bppPixel& p = VGAPalettePixel::_vgaPalette[entry];
   p.red    = red;
   p.green  = green;
   p.blue   = blue;
@@ -532,27 +529,14 @@ void ReelMagic_PushVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvid
     return;
   }
 
-  ReelMagic_VideoMixerUnderlayProvider * const previousFront = _underlayProviders.empty() ? NULL : _underlayProviders.front();
+  //clear the underlay buffer on first provider push
+  if (_underlayProviders.empty()) 
+    ClearMpegUnderlayBuffer();
 
   //put the new provider at the top of the provider stack...
   _underlayProviders.remove(&provider); //defensive
   _underlayProviders.push_front(&provider);
   
-  //if the previous top provider had a higher priority z-order,
-  //bring the previous one back to the top...
-  if (previousFront != NULL) {
-    if (previousFront->GetZOrder() < provider.GetZOrder()) {
-      //previous provider z-order was nearer! the previous one needs remain on top...
-      _underlayProviders.remove(previousFront);
-      _underlayProviders.push_front(previousFront);
-      return;
-    }
-  }
-  else {
-    //clear the underlay buffer on first provider push
-    ClearMpegUnderlayBuffer();
-  }
-
   //update the video rendering mode if necessary...
   SetupVideoMixer(_mpegDictatesOutputSize);
 }
@@ -560,27 +544,6 @@ void ReelMagic_PushVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvid
 void ReelMagic_PopVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider) {
   _underlayProviders.remove(&provider);
   SetupVideoMixer(_mpegDictatesOutputSize);
-}
-
-void ReelMagic_VideoMixerUnderlayProviderZOrderUpdate(void) {
-  //find if someone has a nearer Z-Order than the current
-  //front() underlay provider... if so, bring the nearest
-  //discovery to the front
-  if (_underlayProviders.empty()) return; //nothing to do
-
-  ReelMagic_VideoMixerUnderlayProvider *_nearest = _underlayProviders.front();
-
-  //scan the list from front to back so that way players with a matching Z-Order
-  //are prioritied on a FILO basis (newer pushed player gets the priorty)
-  for (std::list<ReelMagic_VideoMixerUnderlayProvider*>::const_iterator i = _underlayProviders.begin(); 
-       i != _underlayProviders.end(); ++i) {
-    if ((*i)->GetZOrder() < _nearest->GetZOrder())
-      _nearest = (*i); //found a player with a nearer Z-Order!
-  }
-  if (_nearest != _underlayProviders.front()) {
-    //a nearer player was found... put it in front...
-    ReelMagic_PushVideoMixerUnderlayProvider(*_nearest);
-  }
 }
 
 void ReelMagic_InitVideoMixer(Section* sec) {

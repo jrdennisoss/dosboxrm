@@ -47,9 +47,9 @@
 
 
 
-//note: return to zork wants 1.11 or higher
-static const Bit8u  REELMAGIC_DRIVER_VERSION_MAJOR  = 1;
-static const Bit8u  REELMAGIC_DRIVER_VERSION_MINOR  = 11;
+//note: Reported ReelMagic driver version 2.21 seems to be the most common...
+static const Bit8u  REELMAGIC_DRIVER_VERSION_MAJOR  = 2;
+static const Bit8u  REELMAGIC_DRIVER_VERSION_MINOR  = 21;
 static const Bit16u REELMAGIC_BASE_IO_PORT          = 0x9800; //note: the real deal usually sits at 260h... practically unused for now; XXX should this be configurable!?
 static const Bit8u  REELMAGIC_IRQ                   = 11;     //practically unused for now; XXX should this be configurable!?
 static const char   REELMAGIC_FMPDRV_EXE_LOCATION[] = "Z:\\"; //the trailing \ is super important!
@@ -61,24 +61,46 @@ static bool   _unloadAllowed             = true;
 
 //enable full API logging only when heavy debugging is on...
 #if C_HEAVY_DEBUG
-#define APILOG LOG
+  static bool _a204debug = true;
+  #define APILOG LOG
+  #define APILOG_DCFILT(COMMAND, SUBFUNC, ...) \
+    if (_a204debug || (command != 0xA) || (subfunc != 0x204)) \
+      APILOG(LOG_REELMAGIC, LOG_NORMAL)(__VA_ARGS__)
 #else
-static inline void APILOG_DONOTHING_FUNC(...) {}
-#define APILOG(A,B) APILOG_DONOTHING_FUNC
+  static inline void APILOG_DONOTHING_FUNC(...) {}
+  #define APILOG(A,B) APILOG_DONOTHING_FUNC
+  static inline void APILOG_DCFILT(...) {}
 #endif
 
 
 
-// user callback function stuff...
+// driver -> user callback function stuff...
+namespace {
+struct UserCallbackCall {
+  Bit16u command;
+  Bit16u handle;
+  Bit16u param1;
+  Bit16u param2;
+  bool invokeNext; //set to true if the next queued callback shall be auto-invoked when this one returns
+  //typedef (void* postcbcb_t) (void*);
+  //postcbcb_t postCallbackCallback; //set to non-null to invoke function after callback returns
+  //void *     postCallbackCallbackUserPtr;
+  UserCallbackCall() : command(0), handle(0), param1(0), param2(0), invokeNext(false) {}
+  UserCallbackCall(const Bit16u command_, const Bit16u handle_ = 0, const Bit16u param1_ = 0, const Bit16u param2_ = 0, const bool invokeNext_ = false) :
+    command(command_), handle(handle_), param1(param1_), param2(param2_), invokeNext(invokeNext_) {}
+};
 struct UserCallbackPreservedState {
   struct Segments segs;
   struct CPU_Regs regs;
   UserCallbackPreservedState() : segs(Segs), regs(cpu_regs) {}
 };
+};
+static std::stack<UserCallbackCall>           _userCallbackStack;
 static std::stack<UserCallbackPreservedState> _preservedUserCallbackStates;
 static RealPt _userCallbackReturnIp        = 0; //place to point the return address to after the user callback returns back to us
 static RealPt _userCallbackReturnDetectIp  = 0; //used to detect if we are returning from the user registered FMPDRV.EXE callback
 static RealPt _userCallbackFarPtr          = 0; // 0 = no callback registered
+static Bitu   _userCallbackType            = 0; //or rather calling convention
 
 
 namespace {struct RMException : ::std::exception { //XXX currently duplicating this in realmagic_*.cpp files to avoid header pollution... TDB if this is a good idea...
@@ -274,42 +296,119 @@ static void FMPDRV_EXE_UninstallINTHandler(void) {
 }
 
 
+
+//
+// functions to serialize the player state into the required API format
+//
+static Bit16u GetFileStateValue(const ReelMagic_MediaPlayer& player) {
+  Bit16u value = 0;
+  if (player.HasVideo()) value |= 2;
+  if (player.HasAudio()) value |= 1;
+  return value;
+}
+
+static Bit16u GetPlayStateValue(const ReelMagic_MediaPlayer& player) {
+  //XXX status code 1 = paused
+  //XXX status code 2 = stopped (e.g. never started with function 3)
+  Bit16u value = player.IsPlaying() ? 0x4 : 0x1;
+  if ((_userCallbackType == 0x2000) && player.IsPlaying()) value |= 0x10; //XXX hack for RTZ!!!
+  return value;
+}
+
 //
 // This is to invoke the user program driver callback if registered...
 //
-static void InvokeUserCallbackOnResume(const Bit16u command, const Bit8u media_handle, const Bit8u unknown1, const Bit32u unknown2) {
-  if (_userCallbackFarPtr == 0) return; //no callback registered...
+static void EnqueueTopUserCallbackOnCPUResume() {
+  if (_userCallbackStack.empty()) E_Exit("FMPDRV.EXE Asking to enqueue a callback with nothing on the top of the callback stack!");
+  if (_userCallbackFarPtr == 0) E_Exit("FMPDRV.EXE Asking to enqueue a callback with no user callback pointer set!");
+  UserCallbackCall& ucc = _userCallbackStack.top();
 
   //snapshot the current state...
   _preservedUserCallbackStates.push(UserCallbackPreservedState());
 
   //prepare the function call...
-  mem_writed(PhysMake(SegValue(ss), reg_sp-=4), unknown2);
-  mem_writeb(PhysMake(SegValue(ss), reg_sp-=1), unknown1);
-  mem_writeb(PhysMake(SegValue(ss), reg_sp-=1), media_handle);
-  mem_writew(PhysMake(SegValue(ss), reg_sp-=2), command);
+  switch (_userCallbackType) { //AFAIK, _userCallbackType dictates the calling convention... this is the value that was passed in when registering the callback function to us
+  case 0x2000: //RTZ-style; shit is passed on the stack...
+    reg_ax = reg_bx = reg_cx = reg_dx = 0; //clear the GP regs for good measure...
+    mem_writew(PhysMake(SegValue(ss), reg_sp-=2), ucc.param2);
+    mem_writew(PhysMake(SegValue(ss), reg_sp-=2), ucc.param1);
+    mem_writew(PhysMake(SegValue(ss), reg_sp-=2), ucc.handle);
+    mem_writew(PhysMake(SegValue(ss), reg_sp-=2), ucc.command);
+    break;
+  default:
+    LOG(LOG_REELMAGIC, LOG_WARN)("Unknown user callback type %04Xh. Defaulting to 0000. This is probably gonna screw something up!", (unsigned)_userCallbackType);
+    //fall through
+  case 0x0000: //The Horde style... shit is passed in registers...
+    reg_bx = ((ucc.command << 8) & 0xFF00) | (ucc.handle & 0xFF);
+    reg_ax = ucc.param1;
+    reg_dx = ucc.param2;
+    reg_cx = 0; //???
+    break;
+  }
+
+  //push the far-call return address...
   mem_writew(PhysMake(SegValue(ss), reg_sp-=2), RealSeg(_userCallbackReturnIp)); //return address to invoke CleanupFromUserCallback()
   mem_writew(PhysMake(SegValue(ss), reg_sp-=2), RealOff(_userCallbackReturnIp)); //return address to invoke CleanupFromUserCallback()
-
-  //clear some regs for good measure...
-  reg_ax = 0; reg_bx = 0; reg_cx = 0; reg_dx = 0;
 
   //then we blast off into the wild blue...
   SegSet16(cs, RealSeg(_userCallbackFarPtr));
   reg_ip = RealOff(_userCallbackFarPtr);
 
-  APILOG(LOG_REELMAGIC, LOG_NORMAL)("Post-Invoking driver_callback(%04Xh, %02Xh, %01Xh, %04Xh)", (unsigned)command, (unsigned)media_handle, (unsigned)unknown1, (unsigned)unknown2);
+  APILOG(LOG_REELMAGIC, LOG_NORMAL)("Post-Invoking registered user-callback on CPU resume. cmd=%04Xh handle=%04Xh p1=%04Xh p2=%04Xh", (unsigned)ucc.command, (unsigned)ucc.handle, (unsigned)ucc.param1, (unsigned)ucc.param2);
+}
+
+static void InvokePlayerStateChangeCallbackOnCPUResumeIfRegistered(const bool isPausing, ReelMagic_MediaPlayer& player) {
+  if (_userCallbackFarPtr == 0) return; //no callback registered...
+
+  const unsigned cbstackStartSize = _userCallbackStack.size();
+
+  if ((_userCallbackType == 0x2000) && (!isPausing)) {
+    //hack to make RTZ work for now...
+    _userCallbackStack.push(UserCallbackCall(5, player.GetBaseHandle(), 0, 0, _userCallbackStack.size() != cbstackStartSize));
+  }
+
+  if (isPausing) {
+    //we are being invoked from a pause command
+    if (player.GetDemuxHandle()) //is this the correct "last" handle !?
+      _userCallbackStack.push(UserCallbackCall(7, player.GetDemuxHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
+    if (player.GetVideoHandle()) //is this the correct "middle" handle !?
+      _userCallbackStack.push(UserCallbackCall(7, player.GetVideoHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
+    if (player.GetAudioHandle()) //on the real deal, highest handle always calls back first! I'm assuming its audio!
+      _userCallbackStack.push(UserCallbackCall(7, player.GetAudioHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
+  } 
+  else {
+    //we are being invoked from a close command
+    if (player.IsPlaying() && player.GetDemuxHandle()) //is this the correct "last" handle !?
+      _userCallbackStack.push(UserCallbackCall(7, player.GetDemuxHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
+    if (player.GetAudioHandle())
+      _userCallbackStack.push(UserCallbackCall(7, player.GetAudioHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
+    if (player.GetVideoHandle())
+      _userCallbackStack.push(UserCallbackCall(7, player.GetVideoHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
+  }
+
+  if (_userCallbackStack.size() != cbstackStartSize)
+    EnqueueTopUserCallbackOnCPUResume();
 }
 
 static void CleanupFromUserCallback(void) {
   if (_preservedUserCallbackStates.empty()) E_Exit("FMPDRV.EXE Asking to cleanup with nothing on preservation stack");
+  if (_userCallbackStack.empty()) E_Exit("FMPDRV.EXE Asking to cleanup with nothing on user callback stack");
   APILOG(LOG_REELMAGIC, LOG_NORMAL)("Returning from driver_callback()");
   
   //restore the previous state of things...
+  const UserCallbackCall& ucc = _userCallbackStack.top();
+  const bool invokeNext = ucc.invokeNext;
+  _userCallbackStack.pop();
+
   const UserCallbackPreservedState& s = _preservedUserCallbackStates.top();
   Segs = s.segs;
   cpu_regs = s.regs;
   _preservedUserCallbackStates.pop();
+
+  if (invokeNext) {
+    APILOG(LOG_REELMAGIC, LOG_NORMAL)("Invoking Next Chained Callback...");
+    EnqueueTopUserCallbackOnCPUResume();
+  }
 }
 
 
@@ -330,12 +429,10 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
   // Close Media Handle
   //
   case 0x02:
+    player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
+    InvokePlayerStateChangeCallbackOnCPUResumeIfRegistered(false, *player);
     ReelMagic_DeletePlayer(media_handle);
     LOG(LOG_REELMAGIC, LOG_NORMAL)("Closed media player handle=%u", media_handle);
-    //invoke the user callback if one is registered after this call returns...
-    //i think 5 means either handle closed or handle has stopped...
-    //TODO: it would make more sense to invoke this callback BEFORE we delete the player...
-    InvokeUserCallbackOnResume(5, media_handle, 0, 0); //XXX No idea if command 5 is the right one or not...
     return 0;
 
   //
@@ -361,23 +458,19 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0;
 
   //
-  // Probably Stop Media Handle
+  // Pause Media Handle
   //
   case 0x04:
-    //this always seems to be called with a valid media handle from return to zork right before it closes
-    //a media handle, hence why I am assuming this is some kind of a stop command. for now, doing nothing
-    //as closing the media handle is all thats really needed to clean things up.
-    //
-    //this is also called by LOTR when the user hits ESC to skip a scene
-    //currently implementing as stop...
     player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
-    player->Stop();
+    if (!player->IsPlaying()) return 0; //nothing to do
+    InvokePlayerStateChangeCallbackOnCPUResumeIfRegistered(true, *player);
+    player->Pause();
     return 0; //returning zero, nobody seems to actually check this anyways...
 
   //
-  // Set Parameter (I think)
+  // Set Parameter
   //
-  case 0x09: //likely set parameter
+  case 0x09:
     if (media_handle == 0) {
       //global?
       switch (subfunc) {
@@ -389,7 +482,7 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       case 0x040E:
         return 0; //unknown what all these currently do... callers seem to ignore the return value anyways...
 
-      case 0x0210: //unsure what this is, it might be something like a "set user pointer"
+      case 0x0210: //XXX THIS IS THE MAGICAL F_CODE LOADER!!!
         return 0;  //for the user_callback() function... ignoring for now... 
       }
     }
@@ -398,15 +491,15 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
       switch (subfunc) {
       case 0x040E:
-        LOG(LOG_REELMAGIC, LOG_WARN)("Setting Player #%u Z-Order To: %u", (unsigned)media_handle, (unsigned short)param1);
-        player->SetZOrder(param1);
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Player #%u Surface Z-Order To: %s VGA", (unsigned)media_handle, (param1&4) ? "Under" : "Over");
+        player->SetUnderVga((param1&4) != 0);
         return 0;
       case 0x1409:
-        LOG(LOG_REELMAGIC, LOG_WARN)("Setting Player #%u Display Size To: %ux%u", (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Player #%u Display Size To: %ux%u", (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
         player->SetDisplaySize(param1, param2);
         return 0;
       case 0x2408:
-        LOG(LOG_REELMAGIC, LOG_WARN)("Setting Player #%u Display Position To: %ux%u", (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Player #%u Display Position To: %ux%u", (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
         player->SetDisplayPosition(param1, param2);
         return 0;
       }
@@ -416,9 +509,9 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0; //return zero on unknown parameter, although callers seem to ignore this...
 
   //
-  // Get Parameter (I think)
+  // Get Parameter or Status
   //
-  case 0x0A: //get media_handle status
+  case 0x0A:
     if (media_handle == 0) {
       //global?
       switch (subfunc) {
@@ -430,15 +523,10 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       //per player ...
       player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
       switch (subfunc) {
-      case 0x202: //is file valid?
-        //XXX note: both SPLAYER.EXE and MADERM.EXE check AX and DX when returning from this:
-        //          something like: if (ax | dx) then cleanup and close the media handle...
-        return player->IsFileValid() ? 3 : 0;
-
-      case 0x204: //this is some kind of play state query...
-        //SPLAYER.EXE hammers this until it either bit 0x01 or bit 0x02 (or both) it set
-        //RTZ hammers this while it returns 0x14
-        return player->IsPlaying() ? 0x14 : 0x1; //assuming 1 means stopped
+      case 0x202: //get file state (bitmap of what streams are available...)
+        return GetFileStateValue(*player);
+      case 0x204: //get play state
+        return GetPlayStateValue(*player);
       case 0x208: //unsure -- see notes in "RMDOS_API.md"
         return 0; //for the love of God, do NOT return anything thats not zero here!
       case 0x403:
@@ -456,6 +544,7 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
   case 0x0b:
     LOG(LOG_REELMAGIC, LOG_WARN)("Registering driver_callback() as [%04X:%04X]", (unsigned)param2, (unsigned)param1);
     _userCallbackFarPtr = RealMake(param2, param1);
+    _userCallbackType = subfunc;
     return 0;
 
   //
@@ -467,12 +556,13 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0;
 
   //
-  // Reset (I think)
+  // Reset
   //
   case 0x0e:
     LOG(LOG_REELMAGIC, LOG_NORMAL)("Reset");
     ReelMagic_DeleteAllPlayers();
     _userCallbackFarPtr = 0;
+    _userCallbackType   = 0;
     return 0;
 
   //
@@ -507,7 +597,7 @@ static Bitu FMPDRV_EXE_INTHandler(void) {
    const Bit32u driver_call_rv = FMPDRV_EXE_driver_call(command, media_handle, subfunc, param1, param2);
    reg_ax = (Bit16u)(driver_call_rv & 0xFFFF); //low
    reg_dx = (Bit16u)(driver_call_rv >> 16);    //high
-   APILOG(LOG_REELMAGIC, LOG_NORMAL)("driver_call(%02Xh,%02Xh,%Xh,%Xh,%Xh)=%Xh", (unsigned)command, (unsigned)media_handle, (unsigned)subfunc, (unsigned)param1, (unsigned)param2, (unsigned)driver_call_rv);
+   APILOG_DCFILT(command, subfunc, "driver_call(%02Xh,%02Xh,%Xh,%Xh,%Xh)=%Xh", (unsigned)command, (unsigned)media_handle, (unsigned)subfunc, (unsigned)param1, (unsigned)param2, (unsigned)driver_call_rv);
   }
   catch (std::exception& ex) {
     LOG(LOG_REELMAGIC, LOG_WARN)("Zeroing out INT return registers due to exception in driver_call(%02Xh,%02Xh,%Xh,%Xh,%Xh)", (unsigned)command, (unsigned)media_handle, (unsigned)subfunc, (unsigned)param1, (unsigned)param2);
@@ -578,6 +668,7 @@ static void SetMixerVolume(const char * const channelName, const Bit16u val, con
 }
 static bool RMDEV_SYS_int2fHandler() {
   if ((reg_ax & 0xFF00) != 0x9800) return false;
+  APILOG(LOG_REELMAGIC, LOG_NORMAL)("RMDEV.SYS ax = 0x%04X bx = 0x%04X cx = 0x%04X dx = 0x%04X", (unsigned)reg_ax, (unsigned)reg_bx, (unsigned)reg_cx, (unsigned)reg_dx);
   switch (reg_ax) {
   case 0x9800:
     switch (reg_bx) {
@@ -736,4 +827,7 @@ void ReelMagic_Init(Section* sec) {
     _unloadAllowed = false;
     FMPDRV_EXE_InstallINTHandler();
   }
+  #if C_HEAVY_DEBUG
+    _a204debug = section->Get_bool("a204debug");
+  #endif
 }
