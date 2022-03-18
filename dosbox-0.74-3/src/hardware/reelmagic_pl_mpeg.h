@@ -1534,7 +1534,7 @@ size_t plm_buffer_tell(plm_buffer_t *self) {
 
 void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 	size_t byte_pos = self->bit_index >> 3;
-	if (byte_pos == self->length) {
+	if (byte_pos >= self->length) {
 		self->bit_index = 0;
 		self->length = 0;
 	}
@@ -1669,17 +1669,14 @@ int plm_buffer_has_start_code(plm_buffer_t *self, int code) {
 	return current;
 }
 
-int plm_buffer_no_start_code(plm_buffer_t *self) {
-	if (!plm_buffer_has(self, (5 << 3))) {
+int plm_buffer_peek_non_zero(plm_buffer_t *self, int bit_count) {
+	if (!plm_buffer_has(self, bit_count)) {
 		return FALSE;
 	}
 
-	size_t byte_index = ((self->bit_index + 7) >> 3);
-	return !(
-		self->bytes[byte_index] == 0x00 &&
-		self->bytes[byte_index + 1] == 0x00 &&
-		self->bytes[byte_index + 2] == 0x01
-	);
+	int val = plm_buffer_read(self, bit_count);
+	self->bit_index -= bit_count;
+	return val != 0;
 }
 
 int16_t plm_buffer_read_vlc(plm_buffer_t *self, const plm_vlc_t *table) {
@@ -2607,7 +2604,6 @@ typedef struct plm_video_t {
 	int quantizer_scale;
 	int slice_begin;
 	int macroblock_address;
-	int slice_max_macroblock_address;
 
 	int mb_row;
 	int mb_col;
@@ -3014,7 +3010,6 @@ void plm_video_decode_picture(plm_video_t *self) {
 void plm_video_decode_slice(plm_video_t *self, int slice) {
 	self->slice_begin = TRUE;
 	self->macroblock_address = (slice - 1) * self->mb_width - 1;
-	self->slice_max_macroblock_address = self->macroblock_address + self->mb_width;
 
 	// Reset motion vectors and DC predictors
 	self->motion_backward.h = self->motion_forward.h = 0;
@@ -3033,8 +3028,8 @@ void plm_video_decode_slice(plm_video_t *self, int slice) {
 	do {
 		plm_video_decode_macroblock(self);
 	} while (
-		self->macroblock_address < self->slice_max_macroblock_address &&
-		plm_buffer_no_start_code(self->buffer)
+		self->macroblock_address < self->mb_size - 1 &&
+		plm_buffer_peek_non_zero(self->buffer, 23)
 	);
 }
 
@@ -3894,16 +3889,15 @@ int plm_audio_find_frame_sync(plm_audio_t *self) {
 			return TRUE;
 		}
 	}
-	self->buffer->bit_index = (i + 1) << 3;
+	self->buffer->bit_index = self->buffer->length << 3;
 	return FALSE;
 }
 
 int plm_audio_decode_header(plm_audio_t *self) {
+	plm_buffer_skip_bytes(self->buffer, 0x00);
 	if (!plm_buffer_has(self->buffer, 48)) {
 		return 0;
 	}
-
-	plm_buffer_skip_bytes(self->buffer, 0x00);
 	int sync = plm_buffer_read(self->buffer, 11);
 
 

@@ -78,6 +78,7 @@ struct ReelMagic_MediaPlayer {
   virtual void SetDisplayPosition(const Bit16u x, const Bit16u y) = 0;
   virtual void SetDisplaySize(const Bit16u width, const Bit16u height) = 0;
   virtual void SetUnderVga(const bool value) = 0;
+  virtual void SetMagicDecodeKey(const Bit32u value) = 0;
   virtual void SetLooping(const bool value) = 0;
 
   virtual bool HasSystem() const = 0;

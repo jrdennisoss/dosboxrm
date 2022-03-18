@@ -74,6 +74,24 @@ static bool   _unloadAllowed             = true;
 
 
 
+//global configuration parameters
+namespace {
+  struct GlobalDefaultConfiguration {
+    bool     underVga;
+    Bit32u   magicDecodeKey;
+
+    void Reset() {
+      underVga        = false;
+      magicDecodeKey  = 0x40044041;
+    }
+    GlobalDefaultConfiguration() {Reset();}
+  };
+  static GlobalDefaultConfiguration _gdef;
+};
+
+
+
+
 // driver -> user callback function stuff...
 namespace {
 struct UserCallbackCall {
@@ -414,6 +432,7 @@ static void CleanupFromUserCallback(void) {
 
 static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_handle, const Bit16u subfunc, const Bit16u param1, const Bit16u param2) {
   ReelMagic_MediaPlayer *player;
+  Bit32u rv;
   switch(command) {
   //
   // Open Media Handle (File)
@@ -423,7 +442,14 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     if (((subfunc & 0xEFFF) != 1) && (subfunc != 2)) LOG(LOG_REELMAGIC, LOG_WARN)("subfunc not 1 or 2 on open command");
     //if subfunc (or rather flags) has the 0x1000 bit set, then the first byte of the caller's
     //pointer is the file path string length
-    return ReelMagic_NewPlayer(new ReelMagic_MediaPlayerDOSFile(param2, param1, (subfunc & 0x1000) != 0));
+    rv = ReelMagic_NewPlayer(new ReelMagic_MediaPlayerDOSFile(param2, param1, (subfunc & 0x1000) != 0));
+
+    //set player defaults from global...
+    player = &ReelMagic_HandleToMediaPlayer(rv);
+    player->SetUnderVga(_gdef.underVga);
+    player->SetMagicDecodeKey(_gdef.magicDecodeKey);
+
+    return rv;
 
   //
   // Close Media Handle
@@ -479,11 +505,17 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       case 0x0409:
       case 0x040C:
       case 0x040D:
+        return 0; //XXX need to implement these! return zero for now...
       case 0x040E:
-        return 0; //unknown what all these currently do... callers seem to ignore the return value anyways...
-
+        rv = _gdef.underVga ? 4 : 2;
+        _gdef.underVga = param1 & 4;
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Global Surface Z-Order To: %s VGA", _gdef.underVga ? "Under" : "Over");
+        return rv; //always return the last value...
       case 0x0210: //XXX THIS IS THE MAGICAL F_CODE LOADER!!!
-        return 0;  //for the user_callback() function... ignoring for now... 
+        rv = _gdef.magicDecodeKey;
+        _gdef.magicDecodeKey = (param2 << 16) | param1;
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Global Magical Decode Key to %08X", (unsigned)_gdef.magicDecodeKey);
+        return rv; //always return the last value...
       }
     }
     else {
@@ -563,6 +595,7 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     ReelMagic_DeleteAllPlayers();
     _userCallbackFarPtr = 0;
     _userCallbackType   = 0;
+    _gdef.Reset();
     return 0;
 
   //
