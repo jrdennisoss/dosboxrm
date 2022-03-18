@@ -479,6 +479,9 @@ public:
     _underVga = value;
     if (_playing) ReelMagic_PushVideoMixerUnderlayProvider(*this);
   }
+  void SetMagicDecodeKey(const uint32_t value) {
+    //ignore for now...
+  }
   void SetLooping(const bool value) {
     _loop = value;
     if (_plm != NULL) plm_set_loop(_plm, _loop ? TRUE : FALSE);
