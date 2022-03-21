@@ -1,7 +1,7 @@
 
 # Overview
 
-This uses version 1.11 of the ReelMagic driver
+This uses version 2.21 of the ReelMagic driver
 
 ## Major Components
 
@@ -33,7 +33,7 @@ Replies with "RM" string by setting AX=524Dh
 ### Subfunction BX=0001h - Query Driver Version
 Means for applications to query the installed ReelMagic driver version.
 Replies with AH=major and AL=minor.
-Since version 1.11 is the target here, I reply with AH=01h AL=0Bh
+Since version 2.21 is the target here, I reply with AH=01h AL=0Bh
 
 ### Subfunction BX=0002h - Query I/O Base Address
 Means for applications to query which I/O base address the ReelMagic card is at. From my limited research,
