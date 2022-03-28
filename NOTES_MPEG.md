@@ -43,6 +43,7 @@ Facts:
   * A static `f_code` of 4 seems to work for most of the Return to Zork magical MPEG asset files.
     * Exceptions: `FENDING0.MPG` wants 3 and `FFBTRD01.MPG` wants 1
   * A static `f_code` of 2 seems to work for most of the Lord of the Rings magical MPEG asset files.
+  * This behavior is impacted by a `driver_call(9, X, 0208h, ...)` call. (See `RMDOS_API.md`)
 
 
 ## Open Questions
