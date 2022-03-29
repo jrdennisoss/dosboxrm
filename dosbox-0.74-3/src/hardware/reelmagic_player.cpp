@@ -166,6 +166,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   Bit16u                              _height;
   double                              _framerate;
   Bit8u                               _magicalRSizeOverride;
+  Bitu                                _bytesDecoded;
 
   AudioSampleFIFO                     _audioFifo;
 
@@ -184,6 +185,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
       if (bytes_read == 0) {
         self->has_ended = TRUE;
       }
+      ((ReelMagic_MediaPlayerImplementation*)user)->_bytesDecoded += bytes_read;
     }
     catch (...) {
       self->has_ended = TRUE;
@@ -193,6 +195,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     try {
       ((ReelMagic_MediaPlayerImplementation*)user)->
         _file->Seek(absPos, DOS_SEEK_SET);
+      ((ReelMagic_MediaPlayerImplementation*)user)->_bytesDecoded = absPos;
     }
     catch (...) {
       //XXX what to do on failure !?
@@ -339,7 +342,8 @@ public:
     _vgaFps(0.0f),
     _plm(NULL),
     _nextFrame(NULL),
-    _magicalRSizeOverride(0) {
+    _magicalRSizeOverride(0),
+    _bytesDecoded(0) {
 
     bool detetectedFileTypeVesOnly = false;
 
@@ -503,6 +507,9 @@ public:
   }
   bool IsPlaying() const {
     return _playing;
+  }
+  Bitu GetBytesDecoded() const {
+    return _bytesDecoded;
   }
 
   Bit16u GetPictureWidth()      const {return _width;}

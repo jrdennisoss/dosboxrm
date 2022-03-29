@@ -62,9 +62,16 @@ static bool   _unloadAllowed             = true;
 //enable full API logging only when heavy debugging is on...
 #if C_HEAVY_DEBUG
   static bool _a204debug = true;
+  static bool _a206debug = true;
+  static inline bool IsDebugLogMessageFiltered(const Bit8u command, const Bit16u subfunc) {
+    if (command != 0x0A) return false;
+    if ((subfunc == 0x204) && (!_a204debug)) return true;
+    if ((subfunc == 0x206) && (!_a206debug)) return true;
+    return false;
+  }
   #define APILOG LOG
-  #define APILOG_DCFILT(COMMAND, SUBFUNC, ...) \
-    if (_a204debug || (command != 0xA) || (subfunc != 0x204)) \
+  #define APILOG_DCFILT(COMMAND, SUBFUNC, ...)        \
+    if (!IsDebugLogMessageFiltered(COMMAND, SUBFUNC)) \
       APILOG(LOG_REELMAGIC, LOG_NORMAL)(__VA_ARGS__)
 #else
   static inline void APILOG_DONOTHING_FUNC(...) {}
@@ -559,6 +566,8 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
         return GetFileStateValue(*player);
       case 0x204: //get play state
         return GetPlayStateValue(*player);
+      case 0x206: //get bytes decoded
+        return player->GetBytesDecoded();
       case 0x208: //unsure -- see notes in "RMDOS_API.md"
         return 0; //for the love of God, do NOT return anything thats not zero here!
       case 0x403:
@@ -862,5 +871,6 @@ void ReelMagic_Init(Section* sec) {
   }
   #if C_HEAVY_DEBUG
     _a204debug = section->Get_bool("a204debug");
+    _a206debug = section->Get_bool("a206debug");
   #endif
 }
