@@ -414,6 +414,10 @@ This returns the current state of play as a bitmap. Currently, the following bit
 * 0x04 - Stream is playing.
 * 0x10 - Unknown.
 
+#### Subfunction 0206h - Query Bytes Decoded
+This returns the 32-bit count of bytes that has been decoded. DX has the upper 16-bits and AX has the
+lower 16-bits.
+
 
 #### Subfunction 0208h - Get User Data
 This gets the arbitrary user data associated with a media handle. The `param1` (low) and `param2` (high)

@@ -86,6 +86,7 @@ struct ReelMagic_MediaPlayer {
   virtual bool HasAudio() const = 0;
   virtual bool IsLooping() const = 0;
   virtual bool IsPlaying() const = 0;
+  virtual Bitu GetBytesDecoded() const = 0;
 
   virtual Bit16u GetPictureWidth() const = 0;
   virtual Bit16u GetPictureHeight() const = 0;

@@ -69,6 +69,7 @@ The parameters are:
 * `vgadup5hack`    -- Duplicate every 5th VGA line to help give output a 4:3 ratio. By default this is `false`
 * `magicfhack`     -- Use for MPEG video debugging purposes only. See `reelmagic_player.cpp` for what exactly this does to the MPEG decoder.
 * `a204debug`      -- Controls FMPDRV.EXE function Ah subfunction 204h debug logging. Only applicable in "heavy debugging" build.
+* `a206debug`      -- Controls FMPDRV.EXE function Ah subfunction 206h debug logging. Only applicable in "heavy debugging" build.
 
 
 For example:
