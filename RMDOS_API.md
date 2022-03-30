@@ -141,7 +141,7 @@ The output is to be written as a null-terminated string to caller-provided memor
 and set AX=0 on success.
 
 
-## Function AX=9803h - Unknown
+## Function AX=981Eh - Unknown
 I'm not quite sure what this does. It is possibly a call to reset the card, but I'm just speculating. If I
 do NOT return with an AX=0 from this call, then the Return to Zork game spams a bunch of `driver_call(10h,...)`
 calls to FMPDRV.EXE and things don't seem to quite function as expected.
@@ -264,6 +264,7 @@ new media handle if successful.
 A few `subfunc` values have been observed:
 * 0001h -- Open File (Seen by SPLAYER.EXE)
 * 0002h -- Open Stream (Seen by Return to Zork)
+* 0101h -- Open File (Seen by Dragon's Lair)
 * 1001h -- Open File (Seen by FMPTEST.EXE)
 
 When opening a file, `param1` (offset) and `param2` (segment) specify a far pointer to a string containing
@@ -280,17 +281,12 @@ as I can tell, no one checks the return value.
 ### Command/Function 03h - Play Media Handle
 This is the call to "play" the given media handle, I have only observed the following sub-functions.
 
-#### Subfunction 0000h - Start Playing
-Called from The Horde. Not sure what the difference is between this one and 0001h below.
+A few `subfunc` values have been observed:
+* 0000h -- Stop on finish. After play completes, screen is black, and a call to Ah/204h will yield 2.
+* 0001h -- Pause on finish. After play completes, screen is last decoded picture, and a call to Ah/204h will yield 1.
+* 0004h -- Play in loop. Calls to Ah/206h will restart from 0 every time the play loops.
 
-#### Subfunction 0001h - Start Playing
-This tells the MPEG decoder to start playing the specified media handle. This always returns zero, but as
-far as I can tell, nothing checks the return value.
-
-#### Subfunction 0004h - Start Playing in Loop
-This tells the MPEG decoder to start playing the specified media handle. This will also put the player
-into a "loop mode" before starting. See above "Command/Function 01h - Open Media Handle" for more
-information on loop mode. This always returns zero, but as far as I can tell, nothing checks the return value.
+I have only seen this command return zero.
 
 
 ### Command/Function 04h - Stop or Pause Media Handle
@@ -453,7 +449,7 @@ This is the very first call that "SPLAYER.EXE" and Return to Zork do at applicat
 a reset function as the return value does not appear to be checked.
 
 ### Command/Function 10h - Unknown
-Unknown what this does. See RMDEV.SYS function AX=9803h.
+Unknown what this does. See RMDEV.SYS function AX=981Eh.
 
 
 
