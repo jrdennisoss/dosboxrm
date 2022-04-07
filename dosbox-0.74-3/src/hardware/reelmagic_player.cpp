@@ -166,7 +166,6 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   Bit16u                              _height;
   double                              _framerate;
   Bit8u                               _magicalRSizeOverride;
-  Bitu                                _bytesDecoded;
 
   AudioSampleFIFO                     _audioFifo;
 
@@ -176,16 +175,15 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
       if (self->discard_read_bytes) {
         plm_buffer_discard_read_bytes(self);
       }
-      const size_t bytes_available = self->capacity - self->length;
+      size_t bytes_available = self->capacity - self->length;
+      if (bytes_available > 4096) bytes_available = 4096;
       const Bit32u bytes_read = ((ReelMagic_MediaPlayerImplementation*)user)->
         _file->Read(self->bytes + self->length, bytes_available);
       self->length += bytes_read;
-      self->file_pos += bytes_read;
 
       if (bytes_read == 0) {
         self->has_ended = TRUE;
       }
-      ((ReelMagic_MediaPlayerImplementation*)user)->_bytesDecoded += bytes_read;
     }
     catch (...) {
       self->has_ended = TRUE;
@@ -195,7 +193,6 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     try {
       ((ReelMagic_MediaPlayerImplementation*)user)->
         _file->Seek(absPos, DOS_SEEK_SET);
-      ((ReelMagic_MediaPlayerImplementation*)user)->_bytesDecoded = absPos;
     }
     catch (...) {
       //XXX what to do on failure !?
@@ -342,8 +339,7 @@ public:
     _vgaFps(0.0f),
     _plm(NULL),
     _nextFrame(NULL),
-    _magicalRSizeOverride(0),
-    _bytesDecoded(0) {
+    _magicalRSizeOverride(0) {
 
     bool detetectedFileTypeVesOnly = false;
 
@@ -509,7 +505,16 @@ public:
     return _playing;
   }
   Bitu GetBytesDecoded() const {
-    return _bytesDecoded;
+    if (_plm == NULL) return 0;
+    //the "real" ReelMagic setup seems to only return values in multiples of 4k...
+    //therfore, we must emulate the same behavior here...
+    //rounding up the demux position to align....
+    //NOTE: I'm not sure if this should be different for DMA streaming mode!
+    const Bitu alignTo = 4096;
+    Bitu rv = plm_buffer_tell(_plm->demux->buffer);
+    rv += alignTo - 1;
+    rv &= ~(alignTo - 1);
+    return rv;
   }
 
   Bit16u GetPictureWidth()      const {return _width;}
