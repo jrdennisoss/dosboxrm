@@ -72,7 +72,7 @@ in an easy to use wrapper.
 Lower-level APIs for accessing the demuxer, video decoder and audio decoder, 
 as well as providing different data sources are also available.
 
-Interfaces are written in an object orientet style, meaning you create object 
+Interfaces are written in an object oriented style, meaning you create object 
 instances via various different constructor functions (plm_*create()),
 do some work on them and later dispose them via plm_*destroy().
 
@@ -1528,7 +1528,7 @@ void plm_buffer_seek(plm_buffer_t *self, size_t pos) {
 
 size_t plm_buffer_tell(plm_buffer_t *self) {
 	return self->mode == PLM_BUFFER_MODE_FILE
-		? self->file_pos + (self->bit_index >> 3) - self->length
+		? self->file_pos + (self->bit_index >> 3)
 		: self->bit_index >> 3;
 }
 
@@ -1543,6 +1543,7 @@ void plm_buffer_discard_read_bytes(plm_buffer_t *self) {
 		self->bit_index -= byte_pos << 3;
 		self->length -= byte_pos;
 	}
+	self->file_pos += byte_pos;
 }
 
 void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
@@ -1555,7 +1556,6 @@ void plm_buffer_load_file_callback(plm_buffer_t *self, void *user) {
 	size_t bytes_available = self->capacity - self->length;
 	size_t bytes_read = fread(self->bytes + self->length, 1, bytes_available, self->fh);
 	self->length += bytes_read;
-	self->file_pos += bytes_read;
 
 	if (bytes_read == 0) {
 		self->has_ended = TRUE;
@@ -2170,7 +2170,6 @@ static const int PLM_VIDEO_PICTURE_TYPE_PREDICTIVE = 2;
 static const int PLM_VIDEO_PICTURE_TYPE_B = 3;
 
 static const int PLM_START_SEQUENCE = 0xB3;
-static const int PLM_START_GOP = 0xB8;
 static const int PLM_START_SLICE_FIRST = 0x01;
 static const int PLM_START_SLICE_LAST = 0xAF;
 static const int PLM_START_PICTURE = 0x00;
@@ -2588,8 +2587,6 @@ typedef struct plm_video_t {
 	int chroma_height;
 
 	int start_code;
-	int gop_index;
-	int gop_frames_decoded;
 	int picture_temporal_reference;
 	int picture_type;
 	int picture_extension_count;
@@ -2665,7 +2662,6 @@ plm_video_t * plm_video_create_with_buffer(plm_buffer_t *buffer, int destroy_whe
 	self->destroy_buffer_when_done = destroy_when_done;
 
 	// Attempt to decode the sequence header
-	self->gop_index = -1;
 	self->start_code = plm_buffer_find_start_code(self->buffer, PLM_START_SEQUENCE);
 	if (self->start_code != -1) {
 		plm_video_decode_sequence_header(self);
@@ -2720,8 +2716,6 @@ void plm_video_rewind(plm_video_t *self) {
 	plm_buffer_rewind(self->buffer);
 	self->time = 0;
 	self->frames_decoded = 0;
-	self->gop_frames_decoded = 0;
-	self->gop_index = -1;
 	self->has_reference_frame = FALSE;
 	self->start_code = -1;
 }
@@ -2737,14 +2731,9 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 	
 	plm_frame_t *frame = NULL;
 	do {
-		while (self->start_code != PLM_START_PICTURE) {
-			if (self->start_code == PLM_START_GOP) {
-				if (!plm_buffer_has(self->buffer, 32)) return NULL;
-				plm_buffer_skip(self->buffer, 32); //TODO: do something with the GOP header?
-				++self->gop_index;
-				self->gop_frames_decoded = 0;
-			}
-			self->start_code = plm_buffer_next_start_code(self->buffer);
+		if (self->start_code != PLM_START_PICTURE) {
+			self->start_code = plm_buffer_find_start_code(self->buffer, PLM_START_PICTURE);
+			
 			if (self->start_code == -1) {
 				// If we reached the end of the file and the previously decoded
 				// frame was a reference frame, we still have to return it.
@@ -2776,6 +2765,7 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 		) {
 			return NULL;
 		}
+		plm_buffer_discard_read_bytes(self->buffer);
 		
 		plm_video_decode_picture(self);
 
@@ -2796,18 +2786,7 @@ plm_frame_t *plm_video_decode(plm_video_t *self) {
 	
 	frame->time = self->time;
 	self->frames_decoded++;
-	self->gop_frames_decoded++;
 	self->time = (double)self->frames_decoded / self->framerate;
-
-	//note: due to the way we tell the buffer to ignore "discard_read_bytes" flag
-	//      during the plm_buffer_has_start_code() to capture the entire picture,
-	//      this causes a memory leak in the ES buffer because the check of the
-	//      "discard_read_bytes" variable in "plm_buffer_write()" for a video ES
-	//      never gets checked... manually checking and disposing this here...
-	if (self->buffer->discard_read_bytes) {
-		plm_buffer_discard_read_bytes(self->buffer);
-		if (self->buffer->mode == PLM_BUFFER_MODE_RING) self->buffer->total_size = 0;
-	}
 	
 	return frame;
 }
@@ -2991,10 +2970,10 @@ void plm_video_decode_picture(plm_video_t *self) {
 	// Decode all slices
 	while (PLM_START_IS_SLICE(self->start_code)) {
 		plm_video_decode_slice(self, self->start_code & 0x000000FF);
-		self->start_code = plm_buffer_next_start_code(self->buffer);
 		if (self->macroblock_address >= self->mb_size - 2) {
 			break;
 		}
+		self->start_code = plm_buffer_next_start_code(self->buffer);
 	}
 
 	// If this is a reference picture rotate the prediction pointers
@@ -3052,7 +3031,7 @@ void plm_video_decode_macroblock(plm_video_t *self) {
 	// Process any skipped macroblocks
 	if (self->slice_begin) {
 		// The first increment of each slice is relative to beginning of the
-		// preverious row, not the preverious macroblock
+		// previous row, not the previous macroblock
 		self->slice_begin = FALSE;
 		self->macroblock_address += increment;
 	}
@@ -3903,7 +3882,7 @@ int plm_audio_decode_header(plm_audio_t *self) {
 
 	// Attempt to resync if no syncword was found. This sucks balls. The MP2 
 	// stream contains a syncword just before every frame (11 bits set to 1).
-	// However, this syncword is not guaranteed to not occur elswhere in the
+	// However, this syncword is not guaranteed to not occur elsewhere in the
 	// stream. So, if we have to resync, we also have to check if the header 
 	// (samplerate, bitrate) differs from the one we had before. This all
 	// may still lead to garbage data being decoded :/
