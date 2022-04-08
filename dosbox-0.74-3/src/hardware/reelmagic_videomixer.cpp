@@ -30,7 +30,6 @@
 #include <string.h>
 #include <exception>
 #include <string>
-#include <list>
 
 namespace {
   struct RMException : ::std::exception { //XXX currently duplicating this in realmagic_*.cpp files to avoid header pollution... TDB if this is a good idea...
@@ -114,18 +113,18 @@ static bool                     _vgaDoubleWidth           = false;
 static bool                     _vgaDoubleHeight          = false;
 
 //state captured from current/active MPEG player
-static PlayerPicturePixel       _mpegUnderlayBuffer[SCALER_MAXWIDTH*SCALER_MAXHEIGHT];
-static PlayerPicturePixel      *_mpegUnderlayBufferPtr    = _mpegUnderlayBuffer;
-static Bitu                     _mpegUnderlayWidth        = 0;
-static Bitu                     _mpegUnderlayHeight       = 0;
+static PlayerPicturePixel       _mpegPictureBuffer[SCALER_MAXWIDTH*SCALER_MAXHEIGHT];
+static PlayerPicturePixel      *_mpegPictureBufferPtr     = _mpegPictureBuffer;
+static Bitu                     _mpegPictureWidth         = 0;
+static Bitu                     _mpegPictureHeight        = 0;
 
 static const Bitu               VIDEOMIXER_BITSPERPIXEL = 32;  //video mixer is exclusively 32bpp on the RENDER... VGA color palette mapping is re-done here...
 
 //current RENDER state
 static void RMR_DrawLine_Passthrough(const void *src);
 ReelMagic_ScalerLineHandler_t                             ReelMagic_RENDER_DrawLine = RMR_DrawLine_Passthrough; //default things to off
-static std::list<ReelMagic_VideoMixerUnderlayProvider*>   _underlayProviders;
-static ReelMagic_VideoMixerUnderlayProvider              *_activeUnderlayProvider = NULL;
+static ReelMagic_VideoMixerMPEGProvider                  *_requestedMpegProvider = NULL;
+static ReelMagic_VideoMixerMPEGProvider                  *_activeMpegProvider = NULL;
 static RenderOutputPixel                                  _finalMixedRenderLineBuffer[SCALER_MAXWIDTH];
 static Bitu                                               _currentRenderLineNumber = 0;
 static Bitu                                               _renderWidth             = 0;
@@ -133,7 +132,7 @@ static Bitu                                               _renderHeight         
 
 
 //
-//pixel mixing / underlay functions...
+//pixel mixing / underlay / overlay functions...
 //
 //TODO: understand the right way to detect transparency... for now, i'm taking the approach of using
 //      VGA pallet index #0 if VGA mode is 8bpp and using "pure black" if VGA mode is 32bpp...
@@ -158,14 +157,14 @@ static inline void MixPixel(RenderOutputPixel& out, const VGAPixelT& vga) {
   out.alpha = 0;
 }
 
-static void ClearMpegUnderlayBuffer(const PlayerPicturePixel& p) {
-  for (Bitu i = 0; i < (sizeof(_mpegUnderlayBuffer) / sizeof(_mpegUnderlayBuffer[0])); ++i)
-    _mpegUnderlayBuffer[i] = p;
+static void ClearMpegPictureBuffer(const PlayerPicturePixel& p) {
+  for (Bitu i = 0; i < (sizeof(_mpegPictureBuffer) / sizeof(_mpegPictureBuffer[0])); ++i)
+    _mpegPictureBuffer[i] = p;
 }
 
-static void ClearMpegUnderlayBuffer() {
+static void ClearMpegPictureBuffer() {
   PlayerPicturePixel p; p.red = 0; p.green = 0; p.blue = 0;
-  ClearMpegUnderlayBuffer(p);
+  ClearMpegPictureBuffer(p);
 }
 
 
@@ -231,8 +230,8 @@ template <typename T> static inline void RMR_DrawLine_VGAMPEGSameSize(const T *s
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
   for (Bitu i = 0; i < lineWidth; ++i)
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[i]);
-  _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[i]);
+  _mpegPictureBufferPtr += _mpegPictureWidth;
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 } CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VGAMPEGSameSize)
 
@@ -240,11 +239,11 @@ template <typename T> static inline void RMR_DrawLine_VGAMPEGSameSize(const T *s
 template <typename T> static inline void RMR_DrawLine_VSO_MPEGDoubleVGASize(const T *src) {
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
-  _mpegUnderlayBufferPtr -= _mpegUnderlayWidth * (_currentRenderLineNumber++ & 1);
+  _mpegPictureBufferPtr -= _mpegPictureWidth * (_currentRenderLineNumber++ & 1);
   for (Bitu i = 0; i < lineWidth; ++i) {
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[i >> 1]);
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[i >> 1]);
   }
-  _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+  _mpegPictureBufferPtr += _mpegPictureWidth;
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 } CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VSO_MPEGDoubleVGASize)
 
@@ -252,11 +251,11 @@ template <typename T> static inline void RMR_DrawLine_VSO_VGAMPEGSameWidthSkip6V
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
   for (Bitu i = 0; i < lineWidth; ++i)
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[i]);
-  _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[i]);
+  _mpegPictureBufferPtr += _mpegPictureWidth;
   if (++_currentRenderLineNumber >= 6) {
     _currentRenderLineNumber = 0;
-    _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+    _mpegPictureBufferPtr += _mpegPictureWidth;
   }
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 } CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VSO_VGAMPEGSameWidthSkip6Vertical)
@@ -264,13 +263,13 @@ template <typename T> static inline void RMR_DrawLine_VSO_VGAMPEGSameWidthSkip6V
 template <typename T> static inline void RMR_DrawLine_VSO_VGAMPEGDoubleSameWidthSkip6Vertical(const T *src) {
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
-  _mpegUnderlayBufferPtr -= _mpegUnderlayWidth * (_currentRenderLineNumber & 1);
+  _mpegPictureBufferPtr -= _mpegPictureWidth * (_currentRenderLineNumber & 1);
   for (Bitu i = 0; i < lineWidth; ++i)
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[i >> 1]);
-  _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[i >> 1]);
+  _mpegPictureBufferPtr += _mpegPictureWidth;
   if (++_currentRenderLineNumber >= 6) {
     _currentRenderLineNumber = 0;
-    _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+    _mpegPictureBufferPtr += _mpegPictureWidth;
   }
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 } CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VSO_VGAMPEGDoubleSameWidthSkip6Vertical)
@@ -295,8 +294,8 @@ template <typename T> static inline void RMR_DrawLine_VGADup5VerticalMPEGSameSiz
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
   for (Bitu i = 0; i < lineWidth; ++i)
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[i]);
-  _mpegUnderlayBufferPtr += _mpegUnderlayWidth;
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[i]);
+  _mpegPictureBufferPtr += _mpegPictureWidth;
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 
   if (++_currentRenderLineNumber >= 5) {
@@ -319,18 +318,18 @@ static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio     = 0;
 static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio    = 0;
 static Bitu _RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5LineCounter = 0;
 static void Initialize_RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_Dimensions() {
-  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio   = _mpegUnderlayWidth << 12;
+  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio   = _mpegPictureWidth << 12;
   _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio  /= _renderWidth;
-  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio  = _mpegUnderlayHeight << 12;
+  _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio  = _mpegPictureHeight << 12;
   _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio /= _renderHeight;
 }
 template <typename T> static inline void RMR_DrawLine_VSO_GeneralResizeMPEGToVGA(const T *src) {
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
   for (Bitu i = 0; i < lineWidth; ++i)
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[(i * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio) >> 12]);
-  _mpegUnderlayBufferPtr =
-    &_mpegUnderlayBuffer[_mpegUnderlayWidth *
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[(i * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio) >> 12]);
+  _mpegPictureBufferPtr =
+    &_mpegPictureBuffer[_mpegPictureWidth *
       ((++_currentRenderLineNumber * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio) >> 12)];
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 } CREATE_RMR_VGA_TYPED_FUNCTIONS(RMR_DrawLine_VSO_GeneralResizeMPEGToVGA)
@@ -339,9 +338,9 @@ template <typename T> static inline void RMR_DrawLine_VSO_GeneralResizeMPEGToVGA
   const Bitu lineWidth          = _vgaWidth;
   RenderOutputPixel * const out = _finalMixedRenderLineBuffer;
   for (Bitu i = 0; i < lineWidth; ++i)
-    MixPixel(out[i], src[i], _mpegUnderlayBufferPtr[(i * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio) >> 12]);
-  _mpegUnderlayBufferPtr =
-    &_mpegUnderlayBuffer[_mpegUnderlayWidth *
+    MixPixel(out[i], src[i], _mpegPictureBufferPtr[(i * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_WidthRatio) >> 12]);
+  _mpegPictureBufferPtr =
+    &_mpegPictureBuffer[_mpegPictureWidth *
       ((++_currentRenderLineNumber * _RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_HeightRatio) >> 12)];
   RENDER_DrawLine(_finalMixedRenderLineBuffer);
 
@@ -358,12 +357,12 @@ template <typename T> static inline void RMR_DrawLine_VSO_GeneralResizeMPEGToVGA
 
 
 static void SetupVideoMixer(const bool updateRenderMode) {
-  //the "_activeUnderlayProvider" variable serves a few purposes:
+  //the "_activeMpegProvider" variable serves a few purposes:
   // 1. Tells the "ReelMagic_RENDER_StartUpdate()" function which player to call "OnVerticalRefresh()" on
   // 2. Prevents the "ReelMagic_RENDER_StartUpdate()" function from calling "OnVerticalRefresh()" if:
   //    . We have not yet received a VGA mode/configuration
   //    . The video mixer is in an error state
-  _activeUnderlayProvider = NULL; //no underlay activation unless all is good...
+  _activeMpegProvider = NULL; //no MPEG activation unless all is good...
 
   //need at least one call from VGA before we can do this...
   if (_vgaBitsPerPixel == 0) return;
@@ -377,17 +376,17 @@ static void SetupVideoMixer(const bool updateRenderMode) {
   }
 
   //cache the current MPEG picture size...
-  ReelMagic_VideoMixerUnderlayProvider * const mpeg = _underlayProviders.empty() ? NULL : _underlayProviders.front();
+  ReelMagic_VideoMixerMPEGProvider * const mpeg = _requestedMpegProvider;
   if (mpeg != NULL) {
-    _mpegUnderlayWidth  = mpeg->GetPictureWidth();
-    _mpegUnderlayHeight = mpeg->GetPictureHeight();
+    _mpegPictureWidth  = mpeg->GetPictureWidth();
+    _mpegPictureHeight = mpeg->GetPictureHeight();
   }
 
   //video mixer is enabled... figure out the operational mode of this thing based on
   //a miserable combination of variables...
   if (_mpegDictatesOutputSize && mpeg) {
-    _renderWidth = _mpegUnderlayWidth;
-    _renderHeight = _mpegUnderlayWidth;
+    _renderWidth = _mpegPictureWidth;
+    _renderHeight = _mpegPictureWidth;
   }
   else if (_vgaDup5Enabled) {
     _renderWidth  = _vgaWidth;
@@ -437,7 +436,7 @@ static void SetupVideoMixer(const bool updateRenderMode) {
   }
   else {
     if (_vgaDup5Enabled) {
-      if ((_renderWidth != _mpegUnderlayWidth) || (_renderHeight != _mpegUnderlayHeight)) {
+      if ((_renderWidth != _mpegPictureWidth) || (_renderHeight != _mpegPictureHeight)) {
         modeStr = "Generic Unoptimized MPEG Resize to DUP5 VGA Pictures";
         Initialize_RMR_DrawLine_VSO_GeneralResizeMPEGToVGA_Dimensions();
         ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_GeneralResizeMPEGToVGADup5, _vgaBitsPerPixel, vgaOver);
@@ -447,19 +446,19 @@ static void SetupVideoMixer(const bool updateRenderMode) {
         ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGADup5VerticalMPEGSameSize, _vgaBitsPerPixel, vgaOver);
       }
     }
-    else if ((_vgaWidth == _mpegUnderlayWidth) && (_vgaHeight == _mpegUnderlayHeight)) {
+    else if ((_vgaWidth == _mpegPictureWidth) && (_vgaHeight == _mpegPictureHeight)) {
       modeStr = "Matching Sized MPEG to VGA Pictures";
       ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAMPEGSameSize, _vgaBitsPerPixel, vgaOver);
     }
-    else if ((_vgaWidth == (_mpegUnderlayWidth*2)) && (_vgaHeight == ((_mpegUnderlayHeight*2)))) {
+    else if ((_vgaWidth == (_mpegPictureWidth*2)) && (_vgaHeight == ((_mpegPictureHeight*2)))) {
       modeStr = "Double Sized MPEG to VGA Pictures";
       ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_MPEGDoubleVGASize, _vgaBitsPerPixel, vgaOver);
     }
-    else if ((_vgaWidth == _mpegUnderlayWidth) && ((_mpegUnderlayHeight / (_mpegUnderlayHeight - _vgaHeight)) == 6)) {
+    else if ((_vgaWidth == _mpegPictureWidth) && ((_mpegPictureHeight / (_mpegPictureHeight - _vgaHeight)) == 6)) {
       modeStr = "Matching Sized MPEG to VGA Pictures, skipping every 6th MPEG line";
       ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_VGAMPEGSameWidthSkip6Vertical, _vgaBitsPerPixel, vgaOver);
     }
-    else if ((_vgaWidth == (_mpegUnderlayWidth*2)) && (((_mpegUnderlayHeight*2) / ((_mpegUnderlayHeight*2) - _vgaHeight)) == 6)) {
+    else if ((_vgaWidth == (_mpegPictureWidth*2)) && (((_mpegPictureHeight*2) / ((_mpegPictureHeight*2) - _vgaHeight)) == 6)) {
       modeStr = "Double Sized MPEG to VGA Pictures, skipping every 6th MPEG line";
       ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VSO_VGAMPEGDoubleSameWidthSkip6Vertical, _vgaBitsPerPixel, vgaOver);
     }
@@ -472,8 +471,8 @@ static void SetupVideoMixer(const bool updateRenderMode) {
 
   //log the mode we are now in
   if (ReelMagic_RENDER_DrawLine == &RMR_DrawLine_MixerError) modeStr = "Error";
-  else _activeUnderlayProvider = mpeg;
-  LOG(LOG_REELMAGIC, LOG_NORMAL)("Video Mixer Mode %s (vga=%ux%u mpeg=%ux%u render=%ux%u)", modeStr, (unsigned)_vgaWidth, (unsigned)_vgaHeight, (unsigned)_mpegUnderlayWidth, (unsigned)_mpegUnderlayHeight, (unsigned)_renderWidth, (unsigned)_renderHeight);
+  else _activeMpegProvider = mpeg;
+  LOG(LOG_REELMAGIC, LOG_NORMAL)("Video Mixer Mode %s (vga=%ux%u mpeg=%ux%u render=%ux%u)", modeStr, (unsigned)_vgaWidth, (unsigned)_vgaHeight, (unsigned)_mpegPictureWidth, (unsigned)_mpegPictureHeight, (unsigned)_renderWidth, (unsigned)_renderHeight);
 }
 
 
@@ -505,44 +504,45 @@ void ReelMagic_RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,float fps,double r
 }
 
 bool ReelMagic_RENDER_StartUpdate(void) {
-  if (_activeUnderlayProvider)
-    _activeUnderlayProvider->OnVerticalRefresh(_mpegUnderlayBuffer, _vgaFramesPerSecond);
+  if (_activeMpegProvider)
+    _activeMpegProvider->OnVerticalRefresh(_mpegPictureBuffer, _vgaFramesPerSecond);
   _currentRenderLineNumber = 0;
-  _mpegUnderlayBufferPtr = _mpegUnderlayBuffer;
+  _mpegPictureBufferPtr = _mpegPictureBuffer;
   return RENDER_StartUpdate();
 }
 
 
 void ReelMagic_SetVideoMixerEnabled(const bool enabled) {
+  if (!enabled) _requestedMpegProvider = NULL; //defensive
   if (enabled == _videoMixerEnabled) return;
   _videoMixerEnabled = enabled;
   LOG(LOG_REELMAGIC, LOG_NORMAL)("%s Video Mixer", enabled ? "Enabling" : "Disabling");
   SetupVideoMixer(true);
 }
 
-void ReelMagic_PushVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider) {
-  //check to make sure that our underlay buffer is big enough for the provider's MPEG picture size
+void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider) {
+  //check to make sure that our MPEG picture buffer is big enough for the provider's MPEG picture size
   const Bitu mpegPictureSize     = provider.GetPictureWidth() * provider.GetPictureHeight();
-  const Bitu maxMpegPictureSize  = sizeof(_mpegUnderlayBuffer) / sizeof(_mpegUnderlayBuffer[0]);
+  const Bitu maxMpegPictureSize  = sizeof(_mpegPictureBuffer) / sizeof(_mpegPictureBuffer[0]);
   if (mpegPictureSize > maxMpegPictureSize) {
     LOG(LOG_REELMAGIC, LOG_ERROR)("Video Mixing Buffers Too Small for MPEG Video Size. Reject Player Push");
     return;
   }
 
-  //clear the underlay buffer on first provider push
-  if (_underlayProviders.empty()) 
-    ClearMpegUnderlayBuffer();
+  //clear the MPEG picture buffer when not replacing an existing provider
+  if (_requestedMpegProvider == NULL)
+    ClearMpegPictureBuffer();
 
-  //put the new provider at the top of the provider stack...
-  _underlayProviders.remove(&provider); //defensive
-  _underlayProviders.push_front(&provider);
+  //set the new requested provider
+  _requestedMpegProvider = &provider;
   
   //update the video rendering mode if necessary...
   SetupVideoMixer(_mpegDictatesOutputSize);
 }
 
-void ReelMagic_PopVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider) {
-  _underlayProviders.remove(&provider);
+void ReelMagic_ClearMatchingVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider) {
+  if (&provider != _requestedMpegProvider) return;
+  _requestedMpegProvider = NULL;
   SetupVideoMixer(_mpegDictatesOutputSize);
 }
 

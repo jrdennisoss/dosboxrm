@@ -140,7 +140,7 @@ static void DeactivatePlayerAudioFifo(AudioSampleFIFO& fifo);
 //
 // implementation of a "ReelMagic Media Player" and handles begins here...
 //
-namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPlayer, public ReelMagic_VideoMixerUnderlayProvider {
+namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPlayer, public ReelMagic_VideoMixerMPEGProvider {
   // creation parameters...
   ReelMagic_MediaPlayerFile * const   _file;
   const ReelMagic_MediaPlayer_Handle  _handle;
@@ -150,6 +150,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
 
   // running / adjustable variables...
   bool                                _underVga;
+  bool                                _stopOnComplete;
   bool                                _loop;
   bool                                _playing;
 
@@ -334,6 +335,7 @@ public:
     _videoHandle(0),
     _audioHandle(0),
     _underVga(false),
+    _stopOnComplete(false),
     _loop(IsLoopFilename(_file->GetFileName())),
     _playing(false),
     _vgaFps(0.0f),
@@ -389,7 +391,7 @@ public:
   virtual ~ReelMagic_MediaPlayerImplementation() {
     LOG(LOG_REELMAGIC, LOG_NORMAL)("Destroying Media Player #%u %s", (unsigned)_handle, _file->GetFileName());
     DeactivatePlayerAudioFifo(_audioFifo);
-    ReelMagic_PopVideoMixerUnderlayProvider(*this);
+    ReelMagic_ClearMatchingVideoMixerMPEGProvider(*this);
     if (_plm != NULL) plm_destroy(_plm);
     delete _file;
   }
@@ -423,10 +425,13 @@ public:
 
 
   //
-  // ReelMagic_VideoMixerUnderlayProvider implementation here...
+  // ReelMagic_VideoMixerMPEGProvider implementation here...
   //
   void OnVerticalRefresh(void * const outputBuffer, const float fps) {
-    if (!_playing) return;
+    if (!_playing) {
+      if (_stopOnComplete) ReelMagic_ClearMatchingVideoMixerMPEGProvider(*this);
+      return;
+    }
     if (fps != _vgaFps) {
       _vgaFps = fps;
       _vgaFramesPerMpegFrame = _vgaFps;
@@ -477,10 +482,13 @@ public:
   void SetUnderVga(const bool value) {
     if (_underVga == value) return;
     _underVga = value;
-    if (_playing) ReelMagic_PushVideoMixerUnderlayProvider(*this);
+    if (_playing) ReelMagic_SetVideoMixerMPEGProvider(*this);
   }
   void SetMagicDecodeKey(const uint32_t value) {
     //ignore for now...
+  }
+  void SetStopOnComplete(const bool value) {
+    _stopOnComplete = value;
   }
   void SetLooping(const bool value) {
     _loop = value;
@@ -524,7 +532,7 @@ public:
   void Play() {
     if (_plm == NULL) return;
     _playing = true;
-    ReelMagic_PushVideoMixerUnderlayProvider(*this);
+    ReelMagic_SetVideoMixerMPEGProvider(*this);
     ActivatePlayerAudioFifo(_audioFifo);
   }
   void Pause() {
@@ -532,7 +540,7 @@ public:
   }
   void Stop() {
     _playing = false;
-    ReelMagic_PopVideoMixerUnderlayProvider(*this);
+    ReelMagic_ClearMatchingVideoMixerMPEGProvider(*this);
   }
 };};
 

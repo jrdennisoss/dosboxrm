@@ -25,8 +25,8 @@
 //
 // video mixer stuff
 //
-struct ReelMagic_VideoMixerUnderlayProvider {
-  virtual ~ReelMagic_VideoMixerUnderlayProvider() {}
+struct ReelMagic_VideoMixerMPEGProvider {
+  virtual ~ReelMagic_VideoMixerMPEGProvider() {}
   virtual void OnVerticalRefresh(void * const outputBuffer, const float fps) = 0;
   virtual bool   IsDisplayFullScreen() = 0;
   virtual Bit16u GetDisplayPositionWidth() = 0;
@@ -48,8 +48,8 @@ typedef void (*ReelMagic_ScalerLineHandler_t)(const void *src);
 extern ReelMagic_ScalerLineHandler_t ReelMagic_RENDER_DrawLine;
 
 void ReelMagic_SetVideoMixerEnabled(const bool enabled);
-void ReelMagic_PushVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider);
-void ReelMagic_PopVideoMixerUnderlayProvider(ReelMagic_VideoMixerUnderlayProvider& provider);
+void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider);
+void ReelMagic_ClearMatchingVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider);
 void ReelMagic_InitVideoMixer(Section* /*sec*/);
 
 
@@ -79,6 +79,7 @@ struct ReelMagic_MediaPlayer {
   virtual void SetDisplaySize(const Bit16u width, const Bit16u height) = 0;
   virtual void SetUnderVga(const bool value) = 0;
   virtual void SetMagicDecodeKey(const Bit32u value) = 0;
+  virtual void SetStopOnComplete(const bool value) = 0;
   virtual void SetLooping(const bool value) = 0;
 
   virtual bool HasSystem() const = 0;
