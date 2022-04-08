@@ -271,6 +271,9 @@ When opening a file, `param1` (offset) and `param2` (segment) specify a far poin
 a DOS filepath. If the `subfunc` has the 1000h bit set, then the first byte the far pointer is pointing to
 is the string length. Otherwise, the string must be NULL terminated.
 
+If the `subfunc` has the 0100h bit set, then the file is not initially scanned. The open file command returns
+immediately and successfully regardless of whether or not the file even exists.
+
 When opening a stream, the `param1` and `param2` values are passed directly to the callback command/function
 04h. 
 

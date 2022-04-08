@@ -474,13 +474,19 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
   case 0x03:
     player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
     switch (subfunc) {
-    case 0x0001: //start playing
-      LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing handle #%u", (unsigned)media_handle);
+    case 0x0000: //start playing -- Stop on completion
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing handle #%u; stop on completion", (unsigned)media_handle);
+      player->SetStopOnComplete(true);
+      player->Play();
+      return 0; //not sure if this means success or not... nobody seems to actually check this...
+    case 0x0001: //start playing -- Pause on completion
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing handle #%u; pause on completion", (unsigned)media_handle);
+      player->SetStopOnComplete(false);
       player->Play();
       return 0; //not sure if this means success or not... nobody seems to actually check this...
     case 0x0004: //start playing in loop
       LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing/looping handle #%u", (unsigned)media_handle);
-      player->SetLooping(true); //explicit; also set by "/l" (lowercase "L") in filepath suffix on open...
+      player->SetLooping(true);
       player->Play();
       return 0; //not sure if this means success or not... nobody seems to actually check this...
     default:
