@@ -40,6 +40,10 @@
 
 //global config
 static int _magicalFcodeOverride = 0; //0 = no override
+static ReelMagic_PlayerConfiguration _globalDefaultPlayerConfiguration;
+static double _audioLevel = 1.5;
+static Bitu _audioFifoSize = 30;
+static Bitu _audioFifoDispose = 2;
 
 
 
@@ -70,29 +74,48 @@ namespace {
       } samples[PLM_AUDIO_SAMPLES_PER_FRAME];
       inline Frame() : produced(false) {}
     };
-    Frame _fifo[30]; //30 should be enough i think...
+    Frame _fifo[100]; //up to 100 is roughly 512k of RAM
+    const Bitu _fifoMax;
+    const Bitu _disposeFrameCount;
     Bitu _producePtr;
     Bitu _consumePtr;
     Bitu _sampleRate;
 
     inline void DisposeForProduction() {
-      const Bitu disposeFrameCount = 2;
-      //const Bitu disposeFrameCount = ARRAY_COUNT(_fifo) / 2;
-      LOG(LOG_REELMAGIC, LOG_WARN)("Audio FIFO consumer not keeping up. Disposing %u Interleaved Samples", (unsigned)(disposeFrameCount * ARRAY_COUNT(_fifo[0].samples)));
-      for (Bitu i = 0; i < disposeFrameCount; ++i) {
+      LOG(LOG_REELMAGIC, LOG_WARN)("Audio FIFO consumer not keeping up. Disposing %u Interleaved Samples", (unsigned)(_disposeFrameCount * ARRAY_COUNT(_fifo[0].samples)));
+      for (Bitu i = 0; i < _disposeFrameCount; ++i) {
         _fifo[_consumePtr++].produced = false;
-        if (_consumePtr >= ARRAY_COUNT(_fifo)) _consumePtr = 0;
+        if (_consumePtr >= _fifoMax) _consumePtr = 0;
       }
     }
 
     inline Bit16u ConvertSample(const double samp) {
-#warning boosting audio too high !?
-      return (Bit16u)(samp * 32767.0 * 1.5);
-      return (Bit16u)(samp * 32767.0);
+      return (Bit16u)(samp * 32767.0 * _audioLevel);
+    }
+
+    static Bitu ComputeFifoMax(const Bitu fifoMax) {
+      Bitu rv = _audioFifoSize;
+      if (rv > fifoMax) {
+        rv = fifoMax;
+        LOG(LOG_REELMAGIC, LOG_WARN)("Requested audio FIFO size %u is too big. Limiting to %u", (unsigned)_audioFifoSize, (unsigned)rv);
+      }
+      return rv;
+    }
+
+    static Bitu ComputeDisposeFrameCount(const Bitu fifoSize) {
+      Bitu rv = _audioFifoDispose;
+      if (rv > fifoSize) {
+        rv = fifoSize;
+        LOG(LOG_REELMAGIC, LOG_WARN)("Requested audio FIFO dispose frame count %u is too big. Limiting to %u", (unsigned)_audioFifoDispose, (unsigned)rv);
+      }
+      return rv;
     }
 
   public:
-    AudioSampleFIFO() : _producePtr(0), _consumePtr(0), _sampleRate(0) { }
+    AudioSampleFIFO() :
+      _fifoMax(ComputeFifoMax(ARRAY_COUNT(_fifo))),
+      _disposeFrameCount(ComputeDisposeFrameCount(_fifoMax)),
+      _producePtr(0), _consumePtr(0), _sampleRate(0) { }
     inline Bitu GetSampleRate() const {return _sampleRate;}
     inline void SetSampleRate(const Bitu value) {_sampleRate = value;}
 
@@ -111,7 +134,7 @@ namespace {
       f.samplesConsumed += sampleCount;
       if (f.samplesConsumed >= ARRAY_COUNT(f.samples)) {
         f.produced = false;
-        if (++_consumePtr >= ARRAY_COUNT(_fifo)) _consumePtr = 0;
+        if (++_consumePtr >= _fifoMax) _consumePtr = 0;
       }
     }
 
@@ -127,7 +150,7 @@ namespace {
 
       f.samplesConsumed = 0;
       f.produced = true;
-      if (++_producePtr >= ARRAY_COUNT(_fifo)) _producePtr = 0;
+      if (++_producePtr >= _fifoMax) _producePtr = 0;
     }
   };
 }
@@ -143,15 +166,11 @@ static void DeactivatePlayerAudioFifo(AudioSampleFIFO& fifo);
 namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPlayer, public ReelMagic_VideoMixerMPEGProvider {
   // creation parameters...
   ReelMagic_MediaPlayerFile * const   _file;
-  const ReelMagic_MediaPlayer_Handle  _handle;
-  ReelMagic_MediaPlayer_Handle        _demuxHandle;
-  ReelMagic_MediaPlayer_Handle        _videoHandle;
-  ReelMagic_MediaPlayer_Handle        _audioHandle;
+  ReelMagic_PlayerConfiguration       _config;
+  ReelMagic_PlayerAttributes          _attrs;
 
   // running / adjustable variables...
-  bool                                _underVga;
   bool                                _stopOnComplete;
-  bool                                _loop;
   bool                                _playing;
 
   // output state...
@@ -163,8 +182,6 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   //stuff about the MPEG decoder...
   plm_t                              *_plm;
   plm_frame_t                        *_nextFrame;
-  Bit16u                              _width;
-  Bit16u                              _height;
   double                              _framerate;
   Bit8u                               _magicalRSizeOverride;
 
@@ -213,7 +230,7 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   void advanceNextFrame() {
     _nextFrame = plm_decode_video(_plm);
     if (_nextFrame == NULL) {
-      if (_loop) _nextFrame = plm_decode_video(_plm); //note: will return NULL frame once when looping... give it one more go...
+      if (plm_get_loop(_plm)) _nextFrame = plm_decode_video(_plm); //note: will return NULL frame once when looping... give it one more go...
       if (_nextFrame == NULL) _playing = false;
     }
   }
@@ -284,9 +301,9 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
   }
 
   void CollectVideoStats() {
-    _width = plm_get_width(_plm);
-    _height = plm_get_height(_plm);
-    if (_width && _height) {
+    _attrs.PictureSize.Width = plm_get_width(_plm);
+    _attrs.PictureSize.Height = plm_get_height(_plm);
+    if (_attrs.PictureSize.Width && _attrs.PictureSize.Height) {
       if (_plm->video_decoder->seqh_picture_rate >= 0x9) {
         LOG(LOG_REELMAGIC, LOG_NORMAL)("Detected a magical picture_rate code of 0x%X.", (unsigned)_plm->video_decoder->seqh_picture_rate);
         const unsigned magical_f_code = _magicalFcodeOverride ? _magicalFcodeOverride: FindMagicalFCode();
@@ -321,27 +338,20 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     _plm->video_decoder = plm_video_create_with_buffer(_plm->demux->buffer, FALSE);
   }
 
-  static bool IsLoopFilename(const char * const filename) {
-    const size_t len = strlen(filename);
-    if (len < 2) return false;
-    return strcmp(&filename[len - 2], "/l") == 0;
-  }
-
 public:
   ReelMagic_MediaPlayerImplementation(ReelMagic_MediaPlayerFile * const file, const ReelMagic_MediaPlayer_Handle handle) :
     _file(file),
-    _handle(handle),
-    _demuxHandle(0),
-    _videoHandle(0),
-    _audioHandle(0),
-    _underVga(false),
     _stopOnComplete(false),
-    _loop(IsLoopFilename(_file->GetFileName())),
     _playing(false),
     _vgaFps(0.0f),
     _plm(NULL),
     _nextFrame(NULL),
     _magicalRSizeOverride(0) {
+
+    memcpy(&_config, &_globalDefaultPlayerConfiguration, sizeof(_config));
+    memset(&_attrs, 0, sizeof(_attrs));
+    
+    _attrs.Handles.Master = handle;
 
     bool detetectedFileTypeVesOnly = false;
 
@@ -357,10 +367,10 @@ public:
       //failed to detect an MPEG-1 PS (muxed) stream... try MPEG-ES assuming video-only...
       detetectedFileTypeVesOnly = true;
       SetupVESOnlyDecode();
-      _videoHandle = _handle;
+      _attrs.Handles.Video = _attrs.Handles.Master;
     }
     else {
-      _demuxHandle = _handle;
+      _attrs.Handles.Demux = _attrs.Handles.Master;
     }
 
     //disable audio buffer load callback so pl_mpeg dont try to "auto fetch" audio samples
@@ -370,28 +380,27 @@ public:
       _audioFifo.SetSampleRate((Bitu)plm_get_samplerate(_plm));
     }
 
-    plm_set_loop(_plm, _loop ? TRUE : FALSE);
     CollectVideoStats();
     advanceNextFrame(); //attempt to decode the first frame of video...
-    if ((_nextFrame == NULL) || (_width == 0) || (_height == 0)) {
+    if ((_nextFrame == NULL) || (_attrs.PictureSize.Width == 0) || (_attrs.PictureSize.Height == 0)) {
       //something failed... asset is deemed bad at this point...
       plm_destroy(_plm);
       _plm = NULL;
     }
 
     if (_plm == NULL) {
-      LOG(LOG_REELMAGIC, LOG_ERROR)("Created%s Media Player #%u MPEG Type Detect Failed %s", _loop ? " Looping" : "", (unsigned)_handle, _file->GetFileName());
+      LOG(LOG_REELMAGIC, LOG_ERROR)("Created Media Player #%u MPEG Type Detect Failed %s", (unsigned)_attrs.Handles.Master, _file->GetFileName());
     }
     else {
-      LOG(LOG_REELMAGIC, LOG_NORMAL)("Created%s Media Player #%u %s %ux%u @ %0.2ffps %s", _loop ? " Looping" : "", (unsigned)_handle, detetectedFileTypeVesOnly ? "MPEG-ES" : "MPEG-PS", (unsigned)_width, (unsigned)_height, _framerate, _file->GetFileName());
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Created Media Player #%u %s %ux%u @ %0.2ffps %s", (unsigned)_attrs.Handles.Master, detetectedFileTypeVesOnly ? "MPEG-ES" : "MPEG-PS", (unsigned)_attrs.PictureSize.Width, (unsigned)_attrs.PictureSize.Height, _framerate, _file->GetFileName());
       if (_audioFifo.GetSampleRate())
-        LOG(LOG_REELMAGIC, LOG_NORMAL)("Media Player #%u Audio Decoder Enabled @ %uHz", (unsigned)_handle, (unsigned)_audioFifo.GetSampleRate());
+        LOG(LOG_REELMAGIC, LOG_NORMAL)("Media Player #%u Audio Decoder Enabled @ %uHz", (unsigned)_attrs.Handles.Master, (unsigned)_audioFifo.GetSampleRate());
     }
   }
   virtual ~ReelMagic_MediaPlayerImplementation() {
-    LOG(LOG_REELMAGIC, LOG_NORMAL)("Destroying Media Player #%u %s", (unsigned)_handle, _file->GetFileName());
+    LOG(LOG_REELMAGIC, LOG_NORMAL)("Destroying Media Player #%u %s", (unsigned)_attrs.Handles.Master, _file->GetFileName());
     DeactivatePlayerAudioFifo(_audioFifo);
-    ReelMagic_ClearMatchingVideoMixerMPEGProvider(*this);
+    if(ReelMagic_GetVideoMixerMPEGProvider() == this) ReelMagic_SetVideoMixerMPEGProvider(NULL);
     if (_plm != NULL) plm_destroy(_plm);
     delete _file;
   }
@@ -410,12 +419,12 @@ public:
   }
   void DeclareAuxHandle(const ReelMagic_MediaPlayer_Handle auxHandle) {
     //this is so damn hacky :-( 
-    if (_videoHandle == 0) {
-      _videoHandle = auxHandle;
+    if (_attrs.Handles.Video == 0) {
+      _attrs.Handles.Video = auxHandle;
       return;
     }
-    if (_audioHandle == 0) {
-      _audioHandle = auxHandle;
+    if (_attrs.Handles.Audio == 0) {
+      _attrs.Handles.Audio = auxHandle;
       return;
     }
     LOG(LOG_REELMAGIC, LOG_WARN)("Declaring too many handles!");
@@ -429,7 +438,7 @@ public:
   //
   void OnVerticalRefresh(void * const outputBuffer, const float fps) {
     if (!_playing) {
-      if (_stopOnComplete) ReelMagic_ClearMatchingVideoMixerMPEGProvider(*this);
+      if (_stopOnComplete) ReelMagic_SetVideoMixerMPEGProvider(NULL);
       return;
     }
     if (fps != _vgaFps) {
@@ -441,7 +450,7 @@ public:
     }
 
     if (_drawNextFrame) {
-      plm_frame_to_rgb(_nextFrame, (uint8_t*)outputBuffer, _width * 3);
+      plm_frame_to_rgb(_nextFrame, (uint8_t*)outputBuffer, _attrs.PictureSize.Width * 3);
       decodeBufferedAudio();
       _drawNextFrame = false;
     }
@@ -452,48 +461,17 @@ public:
     }
   }
 
-  //TODO: implement this!
-  bool IsDisplayFullScreen()         { return true; }
-  Bit16u GetDisplayPositionWidth()   { return 0; }
-  Bit16u GetDisplayPositionHeight()  { return 0; }
-  Bit16u GetDisplaySizeWidth()       { return 0; }
-  Bit16u GetDisplaySizeHeight()      { return 0; }
-
-  //Bit16u GetPictureWidth() const {return _width;} -- is implemented below as it exists in both base "interfaces"
-  //Bit16u GetPictureHeight() const {return _height;} -- is implemented below as it exists in both base "interfaces"
-  //bool   GetUnderVga() const -- is implemented below as it exists in both base "interfaces"
+  const ReelMagic_PlayerConfiguration& GetConfig() const { return _config; }
+  //const ReelMagic_PlayerAttributes& GetAttrs() const -- implemented in the ReelMagic_MediaPlayer functions below
 
 
 
   //
   // ReelMagic_MediaPlayer implementation here...
   //
-  ReelMagic_MediaPlayer_Handle GetBaseHandle() const {  return _handle; }
-  ReelMagic_MediaPlayer_Handle GetDemuxHandle() const { return _demuxHandle; }
-  ReelMagic_MediaPlayer_Handle GetVideoHandle() const { return _videoHandle; }
-  ReelMagic_MediaPlayer_Handle GetAudioHandle() const { return _audioHandle; }
+  ReelMagic_PlayerConfiguration& Config() { return _config; }
+  const ReelMagic_PlayerAttributes& GetAttrs() const { return _attrs; }
 
-  void SetDisplayPosition(const Bit16u x, const Bit16u y) {
-    LOG(LOG_REELMAGIC, LOG_ERROR)("Set Player Display Position Not Implemented!");
-  }
-  void SetDisplaySize(const Bit16u width, const Bit16u height) {
-    LOG(LOG_REELMAGIC, LOG_ERROR)("Set Player Display Size Not Implemented!");
-  }
-  void SetUnderVga(const bool value) {
-    if (_underVga == value) return;
-    _underVga = value;
-    if (_playing) ReelMagic_SetVideoMixerMPEGProvider(*this);
-  }
-  void SetMagicDecodeKey(const uint32_t value) {
-    //ignore for now...
-  }
-  void SetStopOnComplete(const bool value) {
-    _stopOnComplete = value;
-  }
-  void SetLooping(const bool value) {
-    _loop = value;
-    if (_plm != NULL) plm_set_loop(_plm, _loop ? TRUE : FALSE);
-  }
   bool HasSystem() const {
     if (_plm == NULL) return false;
     return _plm->demux->buffer != _plm->video_decoder->buffer;
@@ -505,9 +483,6 @@ public:
   bool HasAudio() const {
     if (_plm == NULL) return false;
     return plm_get_audio_enabled(_plm) != FALSE;
-  }
-  bool IsLooping() const {
-    return _loop;
   }
   bool IsPlaying() const {
     return _playing;
@@ -525,14 +500,13 @@ public:
     return rv;
   }
 
-  Bit16u GetPictureWidth()      const {return _width;}
-  Bit16u GetPictureHeight()     const {return _height;}
-  bool   GetUnderVga()          const {return _underVga;}
-
-  void Play() {
+  void Play(const PlayMode playMode) {
     if (_plm == NULL) return;
+    if (_playing) return;
     _playing = true;
-    ReelMagic_SetVideoMixerMPEGProvider(*this);
+    plm_set_loop(_plm, (playMode == MPPM_LOOP) ? TRUE : FALSE);
+    _stopOnComplete = playMode == MPPM_STOPONCOMPLETE;
+    ReelMagic_SetVideoMixerMPEGProvider(this);
     ActivatePlayerAudioFifo(_audioFifo);
   }
   void Pause() {
@@ -540,7 +514,11 @@ public:
   }
   void Stop() {
     _playing = false;
-    ReelMagic_ClearMatchingVideoMixerMPEGProvider(*this);
+    if(ReelMagic_GetVideoMixerMPEGProvider() == this) ReelMagic_SetVideoMixerMPEGProvider(NULL);
+  }
+  void NotifyConfigChange() {
+    if (_playing && (ReelMagic_GetVideoMixerMPEGProvider() == this))
+      ReelMagic_SetVideoMixerMPEGProvider(this);
   }
 };};
 
@@ -698,8 +676,33 @@ void ReelMagic_InitPlayer(Section* sec) {
   _rmaudio = MIXER_AddChannel(&RMMixerChannelCallback, 44100, "REELMAGC");
   _rmaudio->Enable(true); 
 
+  _audioLevel = (double)section->Get_int("audiolevel");
+  _audioLevel /= 100.0;
+  _audioFifoSize = section->Get_int("audiofifosize");
+  _audioFifoDispose = section->Get_int("audiofifodispose");
+
   //XXX Remove this as it is ONLY for debugging MPEG assets!!!
   _magicalFcodeOverride = section->Get_int("magicfhack");
   if ((_magicalFcodeOverride < 0) || (_magicalFcodeOverride > 7))
     E_Exit("Bad magicfhack value");
+
+  ReelMagic_ResetPlayers();
+}
+
+void ReelMagic_ResetPlayers() {
+  ReelMagic_DeleteAllPlayers();
+
+  //set the global configuration default values here...
+  ReelMagic_PlayerConfiguration& cfg = _globalDefaultPlayerConfiguration;
+  cfg.UnderVga = false;
+  cfg.VgaAlphaIndex = 0;
+  cfg.MagicDecodeKey = 0x40044041;
+  cfg.DisplayPosition.X = 0;
+  cfg.DisplayPosition.Y = 0;
+  cfg.DisplaySize.Width = 0;
+  cfg.DisplaySize.Height = 0;
+}
+
+ReelMagic_PlayerConfiguration& ReelMagic_GlobalDefaultPlayerConfig() {
+  return _globalDefaultPlayerConfiguration;
 }

@@ -25,18 +25,13 @@
 //
 // video mixer stuff
 //
+struct ReelMagic_PlayerConfiguration;
+struct ReelMagic_PlayerAttributes;
 struct ReelMagic_VideoMixerMPEGProvider {
   virtual ~ReelMagic_VideoMixerMPEGProvider() {}
   virtual void OnVerticalRefresh(void * const outputBuffer, const float fps) = 0;
-  virtual bool   IsDisplayFullScreen() = 0;
-  virtual Bit16u GetDisplayPositionWidth() = 0;
-  virtual Bit16u GetDisplayPositionHeight() = 0;
-  virtual Bit16u GetDisplaySizeWidth() = 0;
-  virtual Bit16u GetDisplaySizeHeight() = 0;
-
-  virtual Bit16u GetPictureWidth() const = 0;
-  virtual Bit16u GetPictureHeight() const = 0;
-  virtual bool   GetUnderVga() const = 0;
+  virtual const ReelMagic_PlayerConfiguration& GetConfig() const = 0;
+  virtual const ReelMagic_PlayerAttributes& GetAttrs() const = 0;
 };
 
 void ReelMagic_RENDER_SetPal(Bit8u entry,Bit8u red,Bit8u green,Bit8u blue);
@@ -47,9 +42,10 @@ bool ReelMagic_RENDER_StartUpdate(void);
 typedef void (*ReelMagic_ScalerLineHandler_t)(const void *src);
 extern ReelMagic_ScalerLineHandler_t ReelMagic_RENDER_DrawLine;
 
+void ReelMagic_ResetVideoMixer();
 void ReelMagic_SetVideoMixerEnabled(const bool enabled);
-void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider);
-void ReelMagic_ClearMatchingVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider);
+ReelMagic_VideoMixerMPEGProvider *ReelMagic_GetVideoMixerMPEGProvider();
+void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider * const provider);
 void ReelMagic_InitVideoMixer(Section* /*sec*/);
 
 
@@ -61,6 +57,29 @@ void ReelMagic_InitVideoMixer(Section* /*sec*/);
 
 #define REELMAGIC_MAX_HANDLES (16)
 typedef Bit8u ReelMagic_MediaPlayer_Handle;
+struct ReelMagic_PlayerConfiguration {
+  bool     UnderVga;
+  Bit8u    VgaAlphaIndex;
+  Bit32u   MagicDecodeKey;
+  Bit32u   UserData;
+  struct {
+    Bit16u X, Y;
+  }        DisplayPosition;
+  struct {
+    Bit16u Width, Height;
+  }        DisplaySize;
+};
+struct ReelMagic_PlayerAttributes {
+  struct {
+    ReelMagic_MediaPlayer_Handle Master;
+    ReelMagic_MediaPlayer_Handle Demux;
+    ReelMagic_MediaPlayer_Handle Video;
+    ReelMagic_MediaPlayer_Handle Audio;
+  } Handles;
+  struct {
+    Bit16u Width, Height;
+  } PictureSize;
+};
 struct ReelMagic_MediaPlayerFile {
   virtual ~ReelMagic_MediaPlayerFile() {}
   virtual const char *GetFileName() const = 0;
@@ -70,32 +89,24 @@ struct ReelMagic_MediaPlayerFile {
 };
 struct ReelMagic_MediaPlayer {
   virtual ~ReelMagic_MediaPlayer() {}
-  virtual ReelMagic_MediaPlayer_Handle GetBaseHandle()  const = 0;
-  virtual ReelMagic_MediaPlayer_Handle GetDemuxHandle() const = 0;
-  virtual ReelMagic_MediaPlayer_Handle GetVideoHandle() const = 0;
-  virtual ReelMagic_MediaPlayer_Handle GetAudioHandle() const = 0;
-
-  virtual void SetDisplayPosition(const Bit16u x, const Bit16u y) = 0;
-  virtual void SetDisplaySize(const Bit16u width, const Bit16u height) = 0;
-  virtual void SetUnderVga(const bool value) = 0;
-  virtual void SetMagicDecodeKey(const Bit32u value) = 0;
-  virtual void SetStopOnComplete(const bool value) = 0;
-  virtual void SetLooping(const bool value) = 0;
+  virtual ReelMagic_PlayerConfiguration& Config() = 0;
+  virtual const ReelMagic_PlayerAttributes& GetAttrs() const = 0;
 
   virtual bool HasSystem() const = 0;
   virtual bool HasVideo() const = 0;
   virtual bool HasAudio() const = 0;
-  virtual bool IsLooping() const = 0;
   virtual bool IsPlaying() const = 0;
   virtual Bitu GetBytesDecoded() const = 0;
 
-  virtual Bit16u GetPictureWidth() const = 0;
-  virtual Bit16u GetPictureHeight() const = 0;
-  virtual bool   GetUnderVga() const = 0;
-
-  virtual void Play() = 0;
+  enum PlayMode {
+    MPPM_PAUSEONCOMPLETE,
+    MPPM_STOPONCOMPLETE,
+    MPPM_LOOP,
+  };
+  virtual void Play(const PlayMode playMode = MPPM_PAUSEONCOMPLETE) = 0;
   virtual void Pause() = 0;
   virtual void Stop() = 0;
+  virtual void NotifyConfigChange() = 0;
 };
 
 //note: once a player file object is handed to new/delete player, regardless of success, it will be cleaned up
@@ -105,6 +116,8 @@ ReelMagic_MediaPlayer& ReelMagic_HandleToMediaPlayer(const ReelMagic_MediaPlayer
 void ReelMagic_DeleteAllPlayers();
 
 void ReelMagic_InitPlayer(Section* /*sec*/);
+void ReelMagic_ResetPlayers();
+ReelMagic_PlayerConfiguration& ReelMagic_GlobalDefaultPlayerConfig();
 
 
 

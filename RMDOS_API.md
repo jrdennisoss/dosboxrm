@@ -61,6 +61,15 @@ This impacts the enabled/disabled UI state of the PCM and CD Audio sliders in th
 utility. This is either a query to say that we have these channels for the mixer, or it's
 replying with an IRQ or location or something... AX=1 for yes, AX = 0 for no
 
+### Subfunction BX=0008h - Query PCM Sound Card Port
+Returns the port address in AX of the PCM sound card (sound blaster compatible) 
+
+### Subfunction BX=0009h - Query PCM Sound Card IRQ
+Returns the IRQ in AX of the PCM sound card (sound blaster compatible) 
+
+### Subfunction BX=0009h - Query PCM Sound Card DMA Channel
+Returns the DMA channel in AX of the PCM sound card (sound blaster compatible) 
+
 ### Subfunction BX=0010h - Query Main Audio Left Channel Volume
 Reply with the channel volume value in AX. 0 = off and 100 = max.
 
@@ -362,9 +371,9 @@ Likely be related to subfunction 1409h below.
 Called from Return to Zork with a zero media handle and return value does not appear to be checked.
 Returning zero and ignoring for now.
 
-#### Subfunction 040Dh - Unknown
-Called from Return to Zork with a zero media handle and return value does not appear to be checked.
-Returning zero and ignoring for now.
+#### Subfunction 040Dh - Set VGA Alpha Palette Index
+This sets the VGA palette index to use for the alpha/transparent color for when the MPEG surface
+z-order is behind the VGA feed.
 
 #### Subfunction 040Eh - Unknown
 Called from "FMPTEST.EXE" with a zero media handle.
@@ -429,6 +438,10 @@ upper 16-bits (DX) and the picture width is returned in the lower 16-bits.
 
 If it's not a getter for the decoded picture dimensions, then it's probably a getter for current
 display size. (which would need to default to decoded picture dimensions)
+
+#### Subfunction 040Dh - Get VGA Alpha Palette Index
+This gets the VGA palette index to use for the alpha/transparent color for when the MPEG surface
+z-order is behind the VGA feed.
 
 
 ### Command/Function 0Bh - Register User Callback Function
