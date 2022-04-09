@@ -78,10 +78,12 @@ struct VGAPalettePixel {
   static VGA32bppPixel _vgaPalette[256];
   Bit8u index;
   template <typename T> inline void CopyRGBTo(T& out) const { _vgaPalette[index].CopyRGBTo(out); }
-  inline bool IsTransparent() const { return index == 0; }
 };
 struct VGAUnderPalettePixel : VGAPalettePixel { inline bool IsTransparent() const { return true; } };
-struct VGAOverPalettePixel  : VGAPalettePixel { inline bool IsTransparent() const { return index == 0; } };
+struct VGAOverPalettePixel  : VGAPalettePixel {
+  static Bit8u _alphaChannelIndex;
+  inline bool IsTransparent() const { return index == _alphaChannelIndex; }
+};
 
 struct PlayerPicturePixel {
   Bit8u red;
@@ -104,6 +106,7 @@ static bool                     _vgaDup5Enabled           = false;
 
 //state captured from VGA
 VGA32bppPixel                   VGAPalettePixel::_vgaPalette[256];
+Bit8u                           VGAOverPalettePixel::_alphaChannelIndex = 0;
 static Bitu                     _vgaWidth                 = 0;
 static Bitu                     _vgaHeight                = 0;
 static Bitu                     _vgaBitsPerPixel          = 0; // != 0 on this variable means we have collected the first call
@@ -378,8 +381,8 @@ static void SetupVideoMixer(const bool updateRenderMode) {
   //cache the current MPEG picture size...
   ReelMagic_VideoMixerMPEGProvider * const mpeg = _requestedMpegProvider;
   if (mpeg != NULL) {
-    _mpegPictureWidth  = mpeg->GetPictureWidth();
-    _mpegPictureHeight = mpeg->GetPictureHeight();
+    _mpegPictureWidth  = mpeg->GetAttrs().PictureSize.Width;
+    _mpegPictureHeight = mpeg->GetAttrs().PictureSize.Height;
   }
 
   //video mixer is enabled... figure out the operational mode of this thing based on
@@ -429,7 +432,7 @@ static void SetupVideoMixer(const bool updateRenderMode) {
 
 
   //choose a RENDER draw function...
-  const bool vgaOver = mpeg->GetUnderVga();
+  const bool vgaOver = mpeg->GetConfig().UnderVga;
   const char * modeStr = "UNKNOWN";
   if (_mpegDictatesOutputSize) {
     E_Exit("MPEG output size not yet implemented!");
@@ -504,25 +507,41 @@ void ReelMagic_RENDER_SetSize(Bitu width,Bitu height,Bitu bpp,float fps,double r
 }
 
 bool ReelMagic_RENDER_StartUpdate(void) {
-  if (_activeMpegProvider)
+  if (_activeMpegProvider) {
+    VGAOverPalettePixel::_alphaChannelIndex = _activeMpegProvider->GetConfig().VgaAlphaIndex;
     _activeMpegProvider->OnVerticalRefresh(_mpegPictureBuffer, _vgaFramesPerSecond);
+  }
   _currentRenderLineNumber = 0;
   _mpegPictureBufferPtr = _mpegPictureBuffer;
   return RENDER_StartUpdate();
 }
 
+void ReelMagic_ResetVideoMixer() {
+  _requestedMpegProvider = NULL;
+  ClearMpegPictureBuffer();
+}
 
 void ReelMagic_SetVideoMixerEnabled(const bool enabled) {
-  if (!enabled) _requestedMpegProvider = NULL; //defensive
+  if (!enabled) ReelMagic_ResetVideoMixer(); //defensive
   if (enabled == _videoMixerEnabled) return;
   _videoMixerEnabled = enabled;
   LOG(LOG_REELMAGIC, LOG_NORMAL)("%s Video Mixer", enabled ? "Enabling" : "Disabling");
   SetupVideoMixer(true);
 }
 
-void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider) {
+ReelMagic_VideoMixerMPEGProvider *ReelMagic_GetVideoMixerMPEGProvider() {
+  return _requestedMpegProvider;
+}
+
+void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider * const provider) {
+  if (provider == NULL) {
+    _requestedMpegProvider = NULL;
+    SetupVideoMixer(_mpegDictatesOutputSize);
+    return;
+  }
+
   //check to make sure that our MPEG picture buffer is big enough for the provider's MPEG picture size
-  const Bitu mpegPictureSize     = provider.GetPictureWidth() * provider.GetPictureHeight();
+  const Bitu mpegPictureSize     = provider->GetAttrs().PictureSize.Width * provider->GetAttrs().PictureSize.Height;
   const Bitu maxMpegPictureSize  = sizeof(_mpegPictureBuffer) / sizeof(_mpegPictureBuffer[0]);
   if (mpegPictureSize > maxMpegPictureSize) {
     LOG(LOG_REELMAGIC, LOG_ERROR)("Video Mixing Buffers Too Small for MPEG Video Size. Reject Player Push");
@@ -534,15 +553,9 @@ void ReelMagic_SetVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provi
     ClearMpegPictureBuffer();
 
   //set the new requested provider
-  _requestedMpegProvider = &provider;
+  _requestedMpegProvider = provider;
   
   //update the video rendering mode if necessary...
-  SetupVideoMixer(_mpegDictatesOutputSize);
-}
-
-void ReelMagic_ClearMatchingVideoMixerMPEGProvider(ReelMagic_VideoMixerMPEGProvider& provider) {
-  if (&provider != _requestedMpegProvider) return;
-  _requestedMpegProvider = NULL;
   SetupVideoMixer(_mpegDictatesOutputSize);
 }
 

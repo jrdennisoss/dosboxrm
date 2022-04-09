@@ -79,27 +79,9 @@ static bool   _unloadAllowed             = true;
   static inline void APILOG_DCFILT(...) {}
 #endif
 
-
-
-//global configuration parameters
-namespace {
-  struct GlobalDefaultConfiguration {
-    bool     underVga;
-    Bit32u   magicDecodeKey;
-
-    void Reset() {
-      underVga        = false;
-      magicDecodeKey  = 0x40044041;
-    }
-    GlobalDefaultConfiguration() {Reset();}
-  };
-  static GlobalDefaultConfiguration _gdef;
-};
-
-
-
-
+//
 // driver -> user callback function stuff...
+//
 namespace {
 struct UserCallbackCall {
   Bit16u command;
@@ -386,29 +368,30 @@ static void InvokePlayerStateChangeCallbackOnCPUResumeIfRegistered(const bool is
   if (_userCallbackFarPtr == 0) return; //no callback registered...
 
   const unsigned cbstackStartSize = _userCallbackStack.size();
+  const ReelMagic_PlayerAttributes& attrs = player.GetAttrs();
 
   if ((_userCallbackType == 0x2000) && (!isPausing)) {
     //hack to make RTZ work for now...
-    _userCallbackStack.push(UserCallbackCall(5, player.GetBaseHandle(), 0, 0, _userCallbackStack.size() != cbstackStartSize));
+    _userCallbackStack.push(UserCallbackCall(5, attrs.Handles.Master, 0, 0, _userCallbackStack.size() != cbstackStartSize));
   }
 
   if (isPausing) {
     //we are being invoked from a pause command
-    if (player.GetDemuxHandle()) //is this the correct "last" handle !?
-      _userCallbackStack.push(UserCallbackCall(7, player.GetDemuxHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
-    if (player.GetVideoHandle()) //is this the correct "middle" handle !?
-      _userCallbackStack.push(UserCallbackCall(7, player.GetVideoHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
-    if (player.GetAudioHandle()) //on the real deal, highest handle always calls back first! I'm assuming its audio!
-      _userCallbackStack.push(UserCallbackCall(7, player.GetAudioHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
+    if (attrs.Handles.Demux) //is this the correct "last" handle !?
+      _userCallbackStack.push(UserCallbackCall(7, attrs.Handles.Demux, GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
+    if (attrs.Handles.Video) //is this the correct "middle" handle !?
+      _userCallbackStack.push(UserCallbackCall(7, attrs.Handles.Video, GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
+    if (attrs.Handles.Audio) //on the real deal, highest handle always calls back first! I'm assuming its audio!
+      _userCallbackStack.push(UserCallbackCall(7, attrs.Handles.Audio, GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize));
   } 
   else {
     //we are being invoked from a close command
-    if (player.IsPlaying() && player.GetDemuxHandle()) //is this the correct "last" handle !?
-      _userCallbackStack.push(UserCallbackCall(7, player.GetDemuxHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
-    if (player.GetAudioHandle())
-      _userCallbackStack.push(UserCallbackCall(7, player.GetAudioHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
-    if (player.GetVideoHandle())
-      _userCallbackStack.push(UserCallbackCall(7, player.GetVideoHandle(), GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
+    if (player.IsPlaying() && attrs.Handles.Demux) //is this the correct "last" handle !?
+      _userCallbackStack.push(UserCallbackCall(7, attrs.Handles.Demux, GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
+    if (attrs.Handles.Audio)
+      _userCallbackStack.push(UserCallbackCall(7, attrs.Handles.Audio, GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
+    if (attrs.Handles.Video)
+      _userCallbackStack.push(UserCallbackCall(7, attrs.Handles.Video, GetPlayStateValue(player), 0, _userCallbackStack.size() != cbstackStartSize)); //4 = state of player; since we only get called on pause, this will always be 4
   }
 
   if (_userCallbackStack.size() != cbstackStartSize)
@@ -439,6 +422,7 @@ static void CleanupFromUserCallback(void) {
 
 static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_handle, const Bit16u subfunc, const Bit16u param1, const Bit16u param2) {
   ReelMagic_MediaPlayer *player;
+  ReelMagic_PlayerConfiguration *cfg;
   Bit32u rv;
   switch(command) {
   //
@@ -450,11 +434,6 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     //if subfunc (or rather flags) has the 0x1000 bit set, then the first byte of the caller's
     //pointer is the file path string length
     rv = ReelMagic_NewPlayer(new ReelMagic_MediaPlayerDOSFile(param2, param1, (subfunc & 0x1000) != 0));
-
-    //set player defaults from global...
-    player = &ReelMagic_HandleToMediaPlayer(rv);
-    player->SetUnderVga(_gdef.underVga);
-    player->SetMagicDecodeKey(_gdef.magicDecodeKey);
 
     return rv;
 
@@ -476,18 +455,15 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     switch (subfunc) {
     case 0x0000: //start playing -- Stop on completion
       LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing handle #%u; stop on completion", (unsigned)media_handle);
-      player->SetStopOnComplete(true);
-      player->Play();
+      player->Play(ReelMagic_MediaPlayer::MPPM_STOPONCOMPLETE);
       return 0; //not sure if this means success or not... nobody seems to actually check this...
     case 0x0001: //start playing -- Pause on completion
       LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing handle #%u; pause on completion", (unsigned)media_handle);
-      player->SetStopOnComplete(false);
-      player->Play();
+      player->Play(ReelMagic_MediaPlayer::MPPM_PAUSEONCOMPLETE);
       return 0; //not sure if this means success or not... nobody seems to actually check this...
     case 0x0004: //start playing in loop
       LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing/looping handle #%u", (unsigned)media_handle);
-      player->SetLooping(true);
-      player->Play();
+      player->Play(ReelMagic_MediaPlayer::MPPM_LOOP);
       return 0; //not sure if this means success or not... nobody seems to actually check this...
     default:
       LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown play player command. Gonna start playing anyway and hope for the best. handle=%u command=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
@@ -510,63 +486,64 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
   // Set Parameter
   //
   case 0x09:
-    if (media_handle == 0) {
-      //global?
-      switch (subfunc) {
-      case 0x0109:
-      case 0x0408:
-      case 0x0409:
-      case 0x040C:
-      case 0x040D:
-        return 0; //XXX need to implement these! return zero for now...
-      case 0x040E:
-        rv = _gdef.underVga ? 4 : 2;
-        _gdef.underVga = param1 & 4;
-        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Global Surface Z-Order To: %s VGA", _gdef.underVga ? "Under" : "Over");
-        return rv; //always return the last value...
-      case 0x0210: //XXX THIS IS THE MAGICAL F_CODE LOADER!!!
-        rv = _gdef.magicDecodeKey;
-        _gdef.magicDecodeKey = (param2 << 16) | param1;
-        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Global Magical Decode Key to %08X", (unsigned)_gdef.magicDecodeKey);
-        return rv; //always return the last value...
-      }
+    if (media_handle == 0) { // global
+      cfg = &ReelMagic_GlobalDefaultPlayerConfig();
     }
-    else {
-      //per player...
+    else { // per player...
       player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
-      switch (subfunc) {
-      case 0x040E:
-        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Player #%u Surface Z-Order To: %s VGA", (unsigned)media_handle, (param1&4) ? "Under" : "Over");
-        player->SetUnderVga((param1&4) != 0);
-        return 0;
-      case 0x1409:
-        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Player #%u Display Size To: %ux%u", (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
-        player->SetDisplaySize(param1, param2);
-        return 0;
-      case 0x2408:
-        LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting Player #%u Display Position To: %ux%u", (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
-        player->SetDisplayPosition(param1, param2);
-        return 0;
-      }
+      cfg = &player->Config();
     }
+    switch (subfunc) {
+    case 0x0208: //user data
+      rv = cfg->UserData;
+      cfg->UserData = (param2 << 16) | param1;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u User Data to %08X", (media_handle ? "Player" : "Global"), (unsigned)media_handle, (unsigned)cfg->UserData);
+      break;
+    case 0x0210: //magical decode key
+      rv = cfg->MagicDecodeKey;
+      cfg->MagicDecodeKey = (param2 << 16) | param1;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u Magical Decode Key to %08X", (media_handle ? "Player" : "Global"), (unsigned)media_handle, (unsigned)cfg->MagicDecodeKey);
+      break;
+    case 0x040D: //VGA alpha palette index
+      rv = cfg->VgaAlphaIndex;
+      cfg->VgaAlphaIndex = param1;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u VGA Alpha Palette Index to %02Xh", (media_handle ? "Player" : "Global"), (unsigned)media_handle, (unsigned)cfg->VgaAlphaIndex);
+      break;
+    case 0x040E:
+      rv = cfg->UnderVga ? 4 : 2;
+      cfg->UnderVga = (param1 & 4) != 0;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u Surface Z-Order To: %s VGA", (media_handle ? "Player" : "Global"), (unsigned)media_handle, cfg->UnderVga ? "Under" : "Over");
+      break;
+    case 0x1409:
+      rv = 0;
+      cfg->DisplaySize.Width  = param1;
+      cfg->DisplaySize.Height = param2;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u Display Size To: %ux%u", (media_handle ? "Player" : "Global"), (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
+      break;
+    case 0x2408:
+      rv = 0;
+      cfg->DisplayPosition.X = param1;
+      cfg->DisplayPosition.Y = param2;
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u Display Position To: %ux%u", (media_handle ? "Player" : "Global"), (unsigned)media_handle, (unsigned)param1, (unsigned)param2);
+      break;
+    default:
+      LOG(LOG_REELMAGIC, LOG_WARN)("FMPDRV.EXE Unimplemented 09h: handle=%u subfunc=%04hXh param1=%hu", (unsigned)media_handle, (unsigned short)subfunc, (unsigned short)param1);
+      return 0;
+    }
+    if (media_handle != 0) player->NotifyConfigChange();
 
-    LOG(LOG_REELMAGIC, LOG_WARN)("FMPDRV.EXE Unsure 09h: handle=%u subfunc=%04hXh param1=%hu", (unsigned)media_handle, (unsigned short)subfunc, (unsigned short)param1);
-    return 0; //return zero on unknown parameter, although callers seem to ignore this...
+    return rv;
 
   //
   // Get Parameter or Status
   //
   case 0x0A:
-    if (media_handle == 0) {
-      //global?
-      switch (subfunc) {
-      case 0x108: //memory available?
-        return 0x00000032; //XXX FMPTEST wants at least 0x32... WHY !?
-      }
+    if (media_handle == 0) { // global
+      cfg = &ReelMagic_GlobalDefaultPlayerConfig();
     }
-    else {
-      //per player ...
+    else { // per player...
       player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
+      cfg = &player->Config();
       switch (subfunc) {
       case 0x202: //get file state (bitmap of what streams are available...)
         return GetFileStateValue(*player);
@@ -574,12 +551,23 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
         return GetPlayStateValue(*player);
       case 0x206: //get bytes decoded
         return player->GetBytesDecoded();
-      case 0x208: //unsure -- see notes in "RMDOS_API.md"
-        return 0; //for the love of God, do NOT return anything thats not zero here!
+      case 0x208: //user data
+        //return cfg->UserData;
+        return 0; //XXX WARNING: Not yet returning this as I fear the consequences will be dire unless DMA streaming is properly implemented!
       case 0x403:
         //XXX WARNING: FMPTEST.EXE thinks the display width is 720 instead of 640!
-        return (player->GetPictureHeight() << 16) | player->GetPictureWidth();
+        return (player->GetAttrs().PictureSize.Height << 16) | player->GetAttrs().PictureSize.Width;
       }
+    }
+    switch (subfunc) {
+    case 0x108: //memory available?
+      return 0x00000032; //XXX FMPTEST wants at least 0x32... WHY !?
+    case 0x0210: //magical key
+      return cfg->MagicDecodeKey;
+    case 0x040D: //VGA alpha palette index
+      return cfg->VgaAlphaIndex;
+    case 0x040E: //surface z-order
+      return cfg->UnderVga ? 4 : 2;
     }
     LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown status query. Likely things are gonna fuck up here. handle=%u query_type=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
     return 0;
@@ -607,10 +595,10 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
   //
   case 0x0e:
     LOG(LOG_REELMAGIC, LOG_NORMAL)("Reset");
-    ReelMagic_DeleteAllPlayers();
+    ReelMagic_ResetPlayers();
+    ReelMagic_ResetVideoMixer();
     _userCallbackFarPtr = 0;
     _userCallbackType   = 0;
-    _gdef.Reset();
     return 0;
 
   //
@@ -741,6 +729,16 @@ static bool RMDEV_SYS_int2fHandler() {
       return true;
     case 0x0007: // query if PCM and CD audio channel is enabled ?
       reg_ax = 0x0001; //yes ?
+      return true;
+
+    case 0x0008: // query sound card port
+      reg_ax = 0x220;
+      return true;
+    case 0x0009: // query sound card IRQ
+      reg_ax = 7;
+      return true;
+    case 0x000A: // query sound card DMA channel
+      reg_ax = 1;
       return true;
 
     case 0x0010: //query MAIN left volume
