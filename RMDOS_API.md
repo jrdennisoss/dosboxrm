@@ -67,7 +67,7 @@ Returns the port address in AX of the PCM sound card (sound blaster compatible)
 ### Subfunction BX=0009h - Query PCM Sound Card IRQ
 Returns the IRQ in AX of the PCM sound card (sound blaster compatible) 
 
-### Subfunction BX=0009h - Query PCM Sound Card DMA Channel
+### Subfunction BX=000Ah - Query PCM Sound Card DMA Channel
 Returns the DMA channel in AX of the PCM sound card (sound blaster compatible) 
 
 ### Subfunction BX=0010h - Query Main Audio Left Channel Volume
