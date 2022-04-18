@@ -326,6 +326,12 @@ static Bit16u GetPlayStateValue(const ReelMagic_MediaPlayer& player) {
   return value;
 }
 
+static Bit16u GetPlayerSurfaceZOrderValue(const ReelMagic_PlayerConfiguration& cfg) {
+  if (!cfg.VideoOutputVisible) return 1;
+  if (cfg.UnderVga) return 4;
+  return 2;
+}
+
 //
 // This is to invoke the user program driver callback if registered...
 //
@@ -547,9 +553,10 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u VGA Alpha Palette Index to %02Xh", (media_handle ? "Player" : "Global"), (unsigned)media_handle, (unsigned)cfg->VgaAlphaIndex);
       break;
     case 0x040E:
-      rv = cfg->UnderVga ? 4 : 2;
+      rv = GetPlayerSurfaceZOrderValue(*cfg);
+      cfg->VideoOutputVisible = (param1 & 1) == 0;
       cfg->UnderVga = (param1 & 4) != 0;
-      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u Surface Z-Order To: %s VGA", (media_handle ? "Player" : "Global"), (unsigned)media_handle, cfg->UnderVga ? "Under" : "Over");
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Setting %s #%u Surface Z-Order To: %s %s VGA", (media_handle ? "Player" : "Global"), (unsigned)media_handle, cfg->VideoOutputVisible ? "Visible" : "Hidden", cfg->UnderVga ? "Under" : "Over");
       break;
     case 0x1409:
       rv = 0;
@@ -604,7 +611,7 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     case 0x040D: //VGA alpha palette index
       return cfg->VgaAlphaIndex;
     case 0x040E: //surface z-order
-      return cfg->UnderVga ? 4 : 2;
+      return GetPlayerSurfaceZOrderValue(*cfg);
     }
     LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown status query. Likely things are gonna fuck up here. handle=%u query_type=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
     return 0;

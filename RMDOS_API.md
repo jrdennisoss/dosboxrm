@@ -409,14 +409,13 @@ Returning zero and ignoring for now.
 This sets the VGA palette index to use for the alpha/transparent color for when the MPEG surface
 z-order is behind the VGA feed.
 
-#### Subfunction 040Eh - Unknown
-Called from "FMPTEST.EXE" with a zero media handle.
-Returning zero and ignoring for now.
-
 #### Subfunction 040Eh - Set Surface Z-Order
-Can be set globally to default the Z-order and all new media handles, or set per media handle. A
-`param1` value of 4 sets the MPEG surface Z-order to be behind the VGA surface and a `param1` value
-of 2 or other sets the MPEG surface Z-order to be in front of the VGA surface.
+Can be set globally to default the Z-order and all new media handles, or set per media handle.
+`param1` sets the value. Known values are:
+
+* 1 = MPEG video surface is invisible
+* 2 = MPEG video surface is in front of the VGA surface.
+* 4 = MPEG video surface is behind the VGA surface.
 
 #### Subfunction 1409h - Set Display Size
 Called from "FMPTEST.EXE" to set the display dimensions of the output video window. "param1" is width and

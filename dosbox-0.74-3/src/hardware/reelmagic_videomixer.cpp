@@ -419,13 +419,14 @@ static void SetupVideoMixer(const bool updateRenderMode) {
   // "passthrough mode" is that this keeps the video mixer enabled with a RENDER output
   // color depth of 32 bits to eliminate any flickering associated with the RENDER_SetSize()
   // call when starting/stopping a video to give the user that smooth hardware decoder feel :-)
-  if (!mpeg) {
+  if ((!mpeg) || (!mpeg->GetConfig().VideoOutputVisible)) {
     if (_vgaDup5Enabled) {
       ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAOnlyDup5Vertical, _vgaBitsPerPixel, true);
     }
     else {
       ASSIGN_RMR_DRAWLINE_FUNCTION(RMR_DrawLine_VGAOnly, _vgaBitsPerPixel, true);
     }
+    _activeMpegProvider = mpeg;
     LOG(LOG_REELMAGIC, LOG_NORMAL)("Video Mixer Mode VGA Only (vga=%ux%u mpeg=off render=%ux%u)", (unsigned)_vgaWidth, (unsigned)_vgaHeight, (unsigned)_renderWidth, (unsigned)_renderHeight);
     return;
   }

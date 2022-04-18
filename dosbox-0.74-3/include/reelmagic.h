@@ -58,6 +58,7 @@ void ReelMagic_InitVideoMixer(Section* /*sec*/);
 #define REELMAGIC_MAX_HANDLES (16)
 typedef Bit8u ReelMagic_MediaPlayer_Handle;
 struct ReelMagic_PlayerConfiguration {
+  bool     VideoOutputVisible;
   bool     UnderVga;
   Bit8u    VgaAlphaIndex;
   Bit32u   MagicDecodeKey;
