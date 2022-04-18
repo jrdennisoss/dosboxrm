@@ -445,10 +445,6 @@ public:
   // ReelMagic_VideoMixerMPEGProvider implementation here...
   //
   void OnVerticalRefresh(void * const outputBuffer, const float fps) {
-    if (!_playing) {
-      if (_stopOnComplete) ReelMagic_SetVideoMixerMPEGProvider(NULL);
-      return;
-    }
     if (fps != _vgaFps) {
       _vgaFps = fps;
       _vgaFramesPerMpegFrame = _vgaFps;
@@ -458,9 +454,15 @@ public:
     }
 
     if (_drawNextFrame) {
-      plm_frame_to_rgb(_nextFrame, (uint8_t*)outputBuffer, _attrs.PictureSize.Width * 3);
+      if (_nextFrame != NULL)
+        plm_frame_to_rgb(_nextFrame, (uint8_t*)outputBuffer, _attrs.PictureSize.Width * 3);
       decodeBufferedAudio();
       _drawNextFrame = false;
+    }
+
+    if (!_playing) {
+      if (_stopOnComplete) ReelMagic_SetVideoMixerMPEGProvider(NULL);
+      return;
     }
 
     for (_waitVgaFramesUntilNextMpegFrame -= 1.00; _waitVgaFramesUntilNextMpegFrame < 0.00; _waitVgaFramesUntilNextMpegFrame += _vgaFramesPerMpegFrame) {
@@ -516,6 +518,7 @@ public:
     _stopOnComplete = playMode == MPPM_STOPONCOMPLETE;
     ReelMagic_SetVideoMixerMPEGProvider(this);
     ActivatePlayerAudioFifo(_audioFifo);
+    _vgaFps = 0.0f; //force drawing of next frame and timing reset
   }
   void Pause() {
     _playing = false;
