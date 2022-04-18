@@ -306,6 +306,13 @@ This command tells the player to stop or pause a video. I see Return to Zork cal
 handle usually before it closes the handle. Also, Lord of the Rings calls down on this when the user hits
 the ESC key or spacebar. Currently returns 0.
 
+### Command/Function 06h - Seek Play Position
+This is seen in Crime Patrol and is used as means so set the byte position of the MPEG decoder. This
+functionality is needed because the game has a large single MPEG file containing all video assets. 
+
+Only `subfunc` value of 201h has been observed. `param1` is the low 16-bits of the file byte position.
+`param2` is the high 16-bits of the file byte position.
+
 ### Command/Function 09h - Set Parameter
 This is a "set parameter" function. For most of these I am just ignoring them as I do not know exactly what
 all these do and am returning zero. This can be called on a specific `media_handle` or called globally by

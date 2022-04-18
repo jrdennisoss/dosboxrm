@@ -483,6 +483,22 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0; //returning zero, nobody seems to actually check this anyways...
 
   //
+  // Seek to Byte Offset
+  //
+  case 0x06:
+    player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
+    switch (subfunc) {
+    case 0x201: //not sure exactly what this means, but Crime Patrol is always setting this value
+      player->SeekToByteOffset((param2 << 16) | param1);
+      LOG(LOG_REELMAGIC, LOG_NORMAL)("Seeking player handle #%u to file offset %04X%04Xh", (unsigned)media_handle, (unsigned)param2, (unsigned)param1);
+      return 0;
+    default:
+      LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown seek subfunc. handle=%u subfunc=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
+      return 0;
+    }
+    return 0;
+
+  //
   // Set Parameter
   //
   case 0x09:
