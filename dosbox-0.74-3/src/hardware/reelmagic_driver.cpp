@@ -763,13 +763,16 @@ static bool RMDEV_SYS_int2fHandler() {
       reg_ax = REELMAGIC_BASE_IO_PORT;
       LOG(LOG_REELMAGIC, LOG_WARN)("RMDEV.SYS Telling whoever an invalid base port I/O address of %04Xh... This is unlikely to end well...", (unsigned)reg_ax);
       return true;
-    case 0x0003: //query IRQ... i think... -- stock "FMPDRV.EXE" only
-      reg_ax = REELMAGIC_IRQ;
-      LOG(LOG_REELMAGIC, LOG_WARN)("RMDEV.SYS Telling whoever an invalid IRQ of %u... This is unlikely to end well", (unsigned)reg_ax);
+    case 0x0003: //UNKNOWN!!! REAL DEAL COMES BACK WITH 5...
+      reg_ax = 5;
       return true;
 
     case 0x0004: // query if MPEG audio channel is enabled ?
       reg_ax = 0x0001; //yes ?
+      return true;
+    case 0x0006: // query ReelMagic board IRQ
+      reg_ax = REELMAGIC_IRQ;
+      LOG(LOG_REELMAGIC, LOG_WARN)("RMDEV.SYS Telling whoever an invalid IRQ of %u... This is unlikely to end well", (unsigned)reg_ax);
       return true;
     case 0x0007: // query if PCM and CD audio channel is enabled ?
       reg_ax = 0x0001; //yes ?

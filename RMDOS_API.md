@@ -45,16 +45,20 @@ of a ReelMagic card sits at port 0x260 from what I can tell.
 Note: As "FMPDRV.EXE" is fully emulated, this value is ignored so it does not really matter
       what it replies with.
 
-### Subfunction BX=0003h - Probably Query IRQ 
-Not 100% sure, but I think this is the IRQ number of the card. Currently replying with AX=11.
-
-Note: As "FMPDRV.EXE" is fully emulated, this value is ignored so it does not really matter
-      what it replies with.
+### Subfunction BX=0003h - Unknown
+Not 100% sure, real deal with Maxima card returns ax=5 so emulator currently does the same.
 
 ### Subfunction BX=0004h - Query if MPEG/ReelMagic Audio Channel is Enabled (I think)
 This impacts the enabled/disabled UI state of the MPEG slider in the "DOXMIX.EXE" utility. This
 is either a query to say that we have MPEG audio channel for the mixer, or it's replying with an
 IRQ or location or something... AX=1 for yes, AX = 0 for no
+
+### Subfunction BX=0006h - Query IRQ
+Means for applications to query the IRQ for the ReelMagic card; returned in ax. The default stock config
+of a ReelMagic card sits at IRQ 11.
+
+Note: As "FMPDRV.EXE" is fully emulated, this value is ignored so it does not really matter
+      what it replies with.
 
 ### Subfunction BX=0007h - Query if PCM and CD Audio Channels are Enabled (I think)
 This impacts the enabled/disabled UI state of the PCM and CD Audio sliders in the "DOXMIX.EXE"
