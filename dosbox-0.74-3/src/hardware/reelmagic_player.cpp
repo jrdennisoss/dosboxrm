@@ -530,7 +530,7 @@ public:
     advanceNextFrame();
   }
   void NotifyConfigChange() {
-    if (_playing && (ReelMagic_GetVideoMixerMPEGProvider() == this))
+    if (ReelMagic_GetVideoMixerMPEGProvider() == this)
       ReelMagic_SetVideoMixerMPEGProvider(this);
   }
 };};
@@ -707,6 +707,7 @@ void ReelMagic_ResetPlayers() {
 
   //set the global configuration default values here...
   ReelMagic_PlayerConfiguration& cfg = _globalDefaultPlayerConfiguration;
+  cfg.VideoOutputVisible = true;
   cfg.UnderVga = false;
   cfg.VgaAlphaIndex = 0;
   cfg.MagicDecodeKey = 0x40044041;
