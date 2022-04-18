@@ -483,6 +483,14 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
     return 0; //returning zero, nobody seems to actually check this anyways...
 
   //
+  // Unknown 5
+  //
+  case 0x05:
+    player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
+    LOG(LOG_REELMAGIC, LOG_WARN)("Ignoring unknown function 5. handle=%u subfunc=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
+    return 0;
+
+  //
   // Seek to Byte Offset
   //
   case 0x06:
@@ -496,6 +504,15 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
       LOG(LOG_REELMAGIC, LOG_ERROR)("Got unknown seek subfunc. handle=%u subfunc=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
       return 0;
     }
+    return 0;
+
+
+  //
+  // Unknown 7
+  //
+  case 0x07:
+    player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
+    LOG(LOG_REELMAGIC, LOG_WARN)("Ignoring unknown function 7. handle=%u subfunc=%04Xh", (unsigned)media_handle, (unsigned)subfunc);
     return 0;
 
   //
