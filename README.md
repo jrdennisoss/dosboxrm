@@ -18,12 +18,29 @@ It is also worth mentioning Dominic Szablewski's (https://phoboslab.org) awesome
 MPEG decoder library `PL_MPEG` was used for this, and of course this project is
 built on top of work the DOSBox Team created.
 
+## Game Compatibility
+
+The following ReelMagic games are known to work on this emulator with minimal issues:
+
+* Return to Zork
+* Lord of the Rings
+* The Horde
+* Entity
+* Man Enough
+* Dragon's Lair
+* Flash Traffic
+* Crime Patrol
+* Crime Patrol 2 - Drug Wars
+
+Note: Entity crashes when viewing a video message. This happens on both the
+      emulator and on the real setup.
 
 ## Current Known Issues and Limitations
 
-* Really only tested working for Return to Zork (more compatibility to come)
-* MPEG video decode is only about 95% complete. There are a few glitches here and there.
+* The emulator does not correctly implement MPEG DMA streaming.
+* MPEG video decode is only about 98% complete. There are a few glitches.
 * Need to revisit architecture and approach for mixing VGA and MPEG.
+* Need to re-base on to DOSBox SVN trunk.
 
 
 ## Running ReelMagic DOSBox
