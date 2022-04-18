@@ -152,6 +152,13 @@ namespace {
       f.produced = true;
       if (++_producePtr >= _fifoMax) _producePtr = 0;
     }
+    inline void Clear() {
+      for (Bitu i = 0; i < _fifoMax; ++i) {
+        _fifo[i].produced = false;
+      }
+      _producePtr = 0;
+      _consumePtr = 0;
+    }
   };
 }
 
@@ -515,6 +522,12 @@ public:
   void Stop() {
     _playing = false;
     if(ReelMagic_GetVideoMixerMPEGProvider() == this) ReelMagic_SetVideoMixerMPEGProvider(NULL);
+  }
+  void SeekToByteOffset(const Bit32u offset) {
+    plm_rewind(_plm);
+    plm_buffer_seek(_plm->demux->buffer, (size_t)offset);
+    _audioFifo.Clear();
+    advanceNextFrame();
   }
   void NotifyConfigChange() {
     if (_playing && (ReelMagic_GetVideoMixerMPEGProvider() == this))

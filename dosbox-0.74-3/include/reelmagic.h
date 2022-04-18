@@ -106,6 +106,7 @@ struct ReelMagic_MediaPlayer {
   virtual void Play(const PlayMode playMode = MPPM_PAUSEONCOMPLETE) = 0;
   virtual void Pause() = 0;
   virtual void Stop() = 0;
+  virtual void SeekToByteOffset(const Bit32u offset) = 0;
   virtual void NotifyConfigChange() = 0;
 };
 
