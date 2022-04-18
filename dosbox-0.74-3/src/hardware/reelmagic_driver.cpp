@@ -462,7 +462,8 @@ static Bit32u FMPDRV_EXE_driver_call(const Bit8u command, const Bit8u media_hand
   //
   case 0x03:
     player = &ReelMagic_HandleToMediaPlayer(media_handle); // will throw on bad handle
-    switch (subfunc) {
+    if (subfunc & 0xFFF0) LOG(LOG_REELMAGIC, LOG_WARN)("Ignoring upper 12-bits for play command subfunc: %04X", (unsigned)subfunc);
+    switch (subfunc & 0x000F) {
     case 0x0000: //start playing -- Stop on completion
       LOG(LOG_REELMAGIC, LOG_NORMAL)("Start playing handle #%u; stop on completion", (unsigned)media_handle);
       player->Play(ReelMagic_MediaPlayer::MPPM_STOPONCOMPLETE);
