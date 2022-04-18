@@ -218,7 +218,7 @@ for (int_num = 0x80; int_num < 0x100; ++int_num) {
   if (ivt_callback_ptr == NULL) continue;
   const char * str = ivt_callback_ptr; //yup you read that correctly,
                                        //we are casting a function pointer to a string...
-  if (strcmp(&str[3], "FMPDriver") == 0) {
+  if (strcmp(&str[3], "FMPDriver") == 0)
     return int_num; //we have found the FMPDriver at INT int_num
 }
 ```
@@ -231,8 +231,28 @@ for (int_num = 0x80; int_num < 0x100; ++int_num) {
   const char * str = ivt_callback_ptr; //yup you read that correctly,
                                        //we are casting a function pointer to a string...
   size_t strsize = (unsigned char)&str[2];
-  if (strncmp(&str[3], "FMPDriver", strsize) == 0) {
+  if (strncmp(&str[3], "FMPDriver", strsize) == 0)
     return int_num; //we have found the FMPDriver at INT int_num
+}
+```
+
+Crime Patrol checks for TWO strings. Something like this:
+```
+for (int_num = 0x80; int_num < 0x100; ++int_num) {
+  ivt_func_t ivt_callback_ptr = cpu_global_ivt[int_num];
+  if (ivt_callback_ptr == NULL) continue;
+  const char * str = ivt_callback_ptr; //yup you read that correctly,
+                                       //we are casting a function pointer to a string...
+  str += 2; //skip over JMP instruction
+  size_t strsize = (unsigned char)&str[0];
+  str += 1; //skip over size field
+  if (strncmp(str, "FMPDriver", strsize) == 0) {
+    str += strsize + 1; //+1 = '\0' terminator
+    strsize = (unsigned char)&str[0];
+    str += 1; //skip over size field
+    if (strncmp(str, "ReelMagic(TM)", strsize) == 0)
+      return int_num; //we have found the FMPDriver at INT int_num
+  }
 }
 ```
 

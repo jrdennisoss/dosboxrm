@@ -265,9 +265,11 @@ static bool FMPDRV_EXE_InstallINTHandler(void) {
 
   //This is the contents of the "FMPDRV.EXE" INT handler which will be put in the ROM region:
   const Bit8u isr_impl[] = { //Note: this is derrived from "case CB_IRET:" in "../cpu/callback.cpp"
-    0xEB, 0x0B,  // JMP over the check string like a champ...
-    0x09,        // TESTFMP.EXE wants this '9' here... i'm guessing string length of "FMPDriver" perhaps?
+    0xEB, 0x1A,  // JMP over the check strings like a champ...
+    9, //9 bytes for "FMPDriver" check string
     'F', 'M', 'P', 'D', 'r', 'i', 'v', 'e', 'r', '\0',
+    13, //13 bytes for "ReelMagic(TM)" check string
+    'R','e','e','l','M','a','g','i','c','(','T','M',')','\0',
     0xFE, 0x38,  //GRP 4 + Extra Callback Instruction
     (Bit8u)(_dosboxCallbackNumber), (Bit8u)(_dosboxCallbackNumber >> 8),
     0xCF,        //IRET
@@ -277,7 +279,9 @@ static bool FMPDRV_EXE_InstallINTHandler(void) {
     0xFE, 0x38,  //GRP 4 + Extra Callback Instruction
     (Bit8u)(_dosboxCallbackNumber), (Bit8u)(_dosboxCallbackNumber >> 8)
   };
-  if (sizeof(isr_impl) > CB_SIZE) E_Exit("CB_SIZE too small to fit ReelMagic driver IVT code. This means that DOSBox was not compiled correctly!");
+  //Note: checking against double CB_SIZE. This is because we allocate two callbacks to make this fit
+  //      within the "callback ROM" region. See comment in ReelMagic_Init() function below
+  if (sizeof(isr_impl) > (CB_SIZE * 2)) E_Exit("CB_SIZE too small to fit ReelMagic driver IVT code. This means that DOSBox was not compiled correctly!");
 
   CALLBACK_Setup(_dosboxCallbackNumber, &FMPDRV_EXE_INTHandler, CB_IRET, "ReelMagic"); //must happen BEFORE we copy to ROM region!
   for (Bitu i = 0; i < sizeof(isr_impl); ++i) // XXX is there an existing function for this?
@@ -895,6 +899,14 @@ void ReelMagic_Init(Section* sec) {
   
   //Driver/Hardware Initialization...
   _dosboxCallbackNumber = CALLBACK_Allocate(); //dosbox will exit with error if this fails so no need to check result...
+  if (CALLBACK_Allocate() != _dosboxCallbackNumber + 1) {
+    //this is so damn hacky! basically the code that the IVT points to for
+    //this driver needs more than 32-bytes of code to fit the check strings
+    //
+    //therefore, we are allocating two adjacent callbacks... seems kinda
+    //wasteful... need to explore a better way of doing this...
+    E_Exit("Failed to allocate adjacent \"burner\" callback");
+  }
   FMPDRV_EXE::WriteProgram();
   DOS_AddMultiplexHandler(&RMDEV_SYS_int2fHandler);
   LOG(LOG_REELMAGIC, LOG_NORMAL)("\"RMDEV.SYS\" and \"Z:\\FMPDRV.EXE\" successfully installed");
