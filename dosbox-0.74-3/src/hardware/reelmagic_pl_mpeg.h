@@ -579,6 +579,7 @@ static const int PLM_DEMUX_PACKET_AUDIO_2 = 0xC1;
 static const int PLM_DEMUX_PACKET_AUDIO_3 = 0xC2;
 static const int PLM_DEMUX_PACKET_AUDIO_4 = 0xC2;
 static const int PLM_DEMUX_PACKET_VIDEO_1 = 0xE0;
+static const int PLM_DEMUX_PROGRAM_END    = 0xB9;
 
 
 // Create a demuxer with a plm_buffer as source. This will also attempt to read
@@ -646,6 +647,14 @@ double plm_demux_get_duration(plm_demux_t *self, int type);
 // the next call to plm_demux_decode() or until the demuxer is destroyed.
 
 plm_packet_t *plm_demux_decode(plm_demux_t *self);
+
+// Get whether the demux "stop on program end" flag is set
+
+int plm_demux_get_stop_on_program_end(plm_demux_t *self);
+
+// Sets demux "stop on program end" flag
+
+void plm_demux_set_stop_on_program_end(plm_demux_t *self, int stop_on_program_end);
 
 
 
@@ -1703,6 +1712,7 @@ static const int PLM_START_SYSTEM = 0xBB;
 typedef struct plm_demux_t {
 	plm_buffer_t *buffer;
 	int destroy_buffer_when_done;
+	int stop_on_program_end;
 	double system_clock_ref;
 
 	size_t last_file_size;
@@ -2087,9 +2097,20 @@ plm_packet_t *plm_demux_decode(plm_demux_t *self) {
 		) {
 			return plm_demux_decode_packet(self, self->start_code);
 		}
+		else if (self->start_code == PLM_DEMUX_PROGRAM_END) {
+			if (self->stop_on_program_end) return NULL;
+		}
 	} while (self->start_code != -1);
 
 	return NULL;
+}
+
+int plm_demux_get_stop_on_program_end(plm_demux_t *self) {
+	return self->stop_on_program_end;
+}
+
+void plm_demux_set_stop_on_program_end(plm_demux_t *self, int stop_on_program_end) {
+	self->stop_on_program_end = stop_on_program_end;
 }
 
 double plm_demux_decode_time(plm_demux_t *self) {

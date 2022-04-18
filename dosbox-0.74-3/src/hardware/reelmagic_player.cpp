@@ -369,6 +369,7 @@ public:
       _file->GetFileSize()
     );
     _plm = plm_create_with_buffer(plmBuf, TRUE); //TRUE = destroy buffer when done
+    plm_demux_set_stop_on_program_end(_plm->demux, TRUE);
 
     if (!plm_has_headers(_plm)) {
       //failed to detect an MPEG-1 PS (muxed) stream... try MPEG-ES assuming video-only...
