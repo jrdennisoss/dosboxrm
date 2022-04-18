@@ -531,6 +531,8 @@ public:
     plm_rewind(_plm);
     plm_buffer_seek(_plm->demux->buffer, (size_t)offset);
     _audioFifo.Clear();
+    if (_plm->audio_decoder)                   //this is a hacky way to force an audio decoder reset...
+      _plm->audio_decoder->has_header = FALSE; //something (hopefully not sample rate) changes between byte seeks in crime patrol...
     advanceNextFrame();
   }
   void NotifyConfigChange() {
