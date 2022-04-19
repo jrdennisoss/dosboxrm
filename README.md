@@ -81,12 +81,13 @@ configure anything to have a working ReelMagic setup as the defaults will
 enable ReelMagic emulation.
 The parameters are:
 
-* `enabled`        -- Enables/disables the ReelMagic emulator. By default this is `true`
-* `alwaysresident` -- This forces `FMPDRV.EXE` to always be loaded.  By default this is `false`
-* `vgadup5hack`    -- Duplicate every 5th VGA line to help give output a 4:3 ratio. By default this is `false`
-* `magicfhack`     -- Use for MPEG video debugging purposes only. See `reelmagic_player.cpp` for what exactly this does to the MPEG decoder.
-* `a204debug`      -- Controls FMPDRV.EXE function Ah subfunction 204h debug logging. Only applicable in "heavy debugging" build.
-* `a206debug`      -- Controls FMPDRV.EXE function Ah subfunction 206h debug logging. Only applicable in "heavy debugging" build.
+* `enabled`         -- Enables/disables the ReelMagic emulator. By default this is `true`
+* `alwaysresident`  -- This forces `FMPDRV.EXE` to always be loaded.  By default this is `false`
+* `vgadup5hack`     -- Duplicate every 5th VGA line to help give output a 4:3 ratio. By default this is `false`
+* `initialmagickey` -- Provides and alternate value for the initial global "magic key" value in hex. Defaults to 40044041.
+* `magicfhack`      -- Use for MPEG video debugging purposes only. See `reelmagic_player.cpp` for what exactly this does to the MPEG decoder.
+* `a204debug`       -- Controls FMPDRV.EXE function Ah subfunction 204h debug logging. Only applicable in "heavy debugging" build.
+* `a206debug`       -- Controls FMPDRV.EXE function Ah subfunction 206h debug logging. Only applicable in "heavy debugging" build.
 
 
 For example:
