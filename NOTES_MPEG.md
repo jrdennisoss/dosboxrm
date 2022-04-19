@@ -50,19 +50,22 @@ Facts:
 
 * Can the `f_code` update per picture as with standard MPEG-1 video, or is it limited to one static forward/backward static value pair per MPEG file/sequence?
 * What is the exact relationship between temporal sequence number and `f_code`?
+* How exactly does the `driver_call(9, X, 0208h, ...)` (aka. "Magic Key") call directly impact this?
 
 ## Current Emulator Workaround
 
-A truthful `f_code` value appears to be in all P and B pictures with a temporal
-sequence number of either 3 or 8, so I am currently seeking to the first P or B 
-picture header matching these criteria, and applying a static `f_code`
-value to all forward and backward motion vector `f_code` values for
-magical MPEG files.
-
-For picture headers containing empty "user data", I use 4 as the truthful
-temporal sequence number. (The Horde)
+The emulator takes uses `driver_call(9, X, 0208h, ...)` (aka "Set Magic Key") to determine where to find a
+truthful `f_code` value which gets applied to the entire MPEG asset when a "magical" `picture_rate` code
+is specified. The MPEG asset file is quickly scrubbed at media handle open time to find a matchiing P or B
+picture containing a truthful `f_code` value. Then this value is statically applied to the entire decoding
+of said MPEG asset file.
 
 Eventually, I think this needs to be handled on a per-picture basis.
+
+Known "magic key" values:
+
+* 0x40044041 -- Default value. Truthful `f_code` found in temporal sequence number of 3 or 8.
+* 0xC39D7088 -- Used in The Horde. Truthful `f_code` found in temporal sequence number of 4.
 
 
 ## Analyzing and Inspecting These Files

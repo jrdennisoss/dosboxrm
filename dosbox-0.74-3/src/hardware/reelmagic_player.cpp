@@ -39,11 +39,12 @@
 #include "./reelmagic_pl_mpeg.h"
 
 //global config
-static int _magicalFcodeOverride = 0; //0 = no override
 static ReelMagic_PlayerConfiguration _globalDefaultPlayerConfiguration;
 static double _audioLevel = 1.5;
 static Bitu _audioFifoSize = 30;
 static Bitu _audioFifoDispose = 2;
+static Bitu _initialMagicKey = 0x40044041;
+static int _magicalFcodeOverride = 0; //0 = no override
 
 
 
@@ -259,13 +260,13 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
     //the idea here is that MPEG-1 assets with a picture_rate code >= 0x9 in the MPEG sequence
     //header have screwed up f_code values. i'm not sure why but this may be some form of copy
     //and/or clone protection for ReelMagic. pictures with a temporal sequence number of either
-    //3 or 8 seem to contain a truthful f_code for Return to Zork and Lord of the Rings assets
-    //4 seems to contain the truthful f_code for The Horde. The Horde also has an empty user
-    //data chunk in the picture header too which is used to identify this.
+    //3 or 8 seem to contain a truthful f_code when a "key" of 0x40044041 (ReelMagic default)
+    //is given to us and a temporal sequence number of 4 seems to contain the truthful f_code
+    //when a "key" of 0xC39D7088 is given to us
     //
     //for now, this hack scrubs the MPEG file in search of the first P or B pictures with a
-    //temporal sequence number of 3 or 8 (or 4 for The Horde / user data) and returns the
-    //f_code value. then the player applies the f_code as a global static forward and
+    //temporal sequence number matching a truthful value based on the player's "magic key"
+    //the player then applies the found f_code value as a global static forward and
     //backward value for this entire asset.
     //
     //ultimately, this should probably be done on a per-picture basis using some sort of
@@ -289,13 +290,18 @@ namespace { class ReelMagic_MediaPlayerImplementation : public ReelMagic_MediaPl
         plm_buffer_skip(_plm->video_decoder->buffer, 16); // skip vbv_delay
         plm_buffer_skip(_plm->video_decoder->buffer, 1); //skip full_px
         result = plm_buffer_read(_plm->video_decoder->buffer, 3);
-        if (plm_buffer_next_start_code(_plm->video_decoder->buffer) == PLM_START_USER_DATA) {
-          // The Horde videos tsn=4 is truthful
+        switch (_config.MagicDecodeKey) {
+        case 0xC39D7088: //The Horde uses this "key"
           if (temporal_seqnum != 4) result = 0;
-        }
-        else {
-          // Return to Zork and Lord of the Rings videos tsn=3 and tns=8 is truthful
+          break;
+
+        default:
+          LOG(LOG_REELMAGIC, LOG_WARN)("Unknown magic key 0x%08X. Defaulting to 0x40044041", (unsigned)_config.MagicDecodeKey);
+          //fall-through
+        case 0x40044041: //most ReelMagic games seem to use this "key"
+          //tsn=3 and tsn=8 seem to contain truthful 
           if ((temporal_seqnum != 3) && (temporal_seqnum != 8)) result = 0;
+          break;
         }
       }
     } while (result == 0);
@@ -700,6 +706,11 @@ void ReelMagic_InitPlayer(Section* sec) {
   _audioFifoSize = section->Get_int("audiofifosize");
   _audioFifoDispose = section->Get_int("audiofifodispose");
 
+  //read in the initial global magic key from configuration
+  unsigned long scanval;
+  if (sscanf(section->Get_string("initialmagickey"), "%lX", &scanval) != 1) scanval = 0x40044041;
+  _initialMagicKey = scanval;
+
   //XXX Remove this as it is ONLY for debugging MPEG assets!!!
   _magicalFcodeOverride = section->Get_int("magicfhack");
   if ((_magicalFcodeOverride < 0) || (_magicalFcodeOverride > 7))
@@ -716,7 +727,7 @@ void ReelMagic_ResetPlayers() {
   cfg.VideoOutputVisible = true;
   cfg.UnderVga = false;
   cfg.VgaAlphaIndex = 0;
-  cfg.MagicDecodeKey = 0x40044041;
+  cfg.MagicDecodeKey = _initialMagicKey;
   cfg.DisplayPosition.X = 0;
   cfg.DisplayPosition.Y = 0;
   cfg.DisplaySize.Width = 0;
